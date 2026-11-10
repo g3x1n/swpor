@@ -123,3 +123,67 @@ int swpor_parse_hostport(const char *s, char *host, size_t host_cap, uint16_t *p
     *port = (uint16_t)v;
     return SWPOR_OK;
 }
+
+/* ===================================================================== */
+/* CHALLENGE 消息解析（SPEC 8.3）                                           */
+/* ===================================================================== */
+
+int swpor_chal_peek_wire(const uint8_t *p, size_t len, uint32_t max_l, uint8_t file_id[32],
+                         uint8_t *mode, uint32_t *l)
+{
+    if (p == NULL || file_id == NULL || mode == NULL || l == NULL) {
+        return SWPOR_E_INVALID_ARG;
+    }
+    if (len < 37) {
+        return SWPOR_E_PARSE;
+    }
+    const uint8_t m = p[32];
+    const uint32_t lv = swpor_load_be32(p + 33);
+    if (lv == 0 || lv > max_l) {
+        return SWPOR_E_RANGE; /* SPEC 8.3：l 上限，防止资源耗尽 */
+    }
+    if (m == SWPOR_CHAL_SEED) {
+        if (len != 37u + 32u) {
+            return SWPOR_E_PARSE;
+        }
+    } else if (m == SWPOR_CHAL_EXPLICIT) {
+        if (len != 37u + (size_t)lv * 24u) {
+            return SWPOR_E_PARSE;
+        }
+    } else {
+        return SWPOR_E_PARSE;
+    }
+    memcpy(file_id, p, 32);
+    *mode = m;
+    *l = lv;
+    return SWPOR_OK;
+}
+
+int swpor_chal_decode_wire(const uint8_t *p, size_t len, uint64_t n, uint32_t max_l,
+                           swpor_chal_t **out)
+{
+    uint8_t fid[32];
+    uint8_t mode = 0;
+    uint32_t l = 0;
+    int rc = swpor_chal_peek_wire(p, len, max_l, fid, &mode, &l);
+    if (rc != SWPOR_OK) {
+        return rc;
+    }
+    if (n == 0 || n >= SWPOR_MAX_BLOCKS || out == NULL) {
+        return SWPOR_E_INVALID_ARG;
+    }
+    if (mode == SWPOR_CHAL_SEED) {
+        return swpor_chal_from_seed(p + 37, n, l, out);
+    }
+    swpor_chal_item_t *items = malloc((size_t)l * sizeof(*items));
+    if (items == NULL) {
+        return SWPOR_E_NOMEM;
+    }
+    for (uint32_t k = 0; k < l; k++) {
+        items[k].index = swpor_load_be64(p + 37 + (size_t)k * 24u);
+        memcpy(items[k].nu, p + 45 + (size_t)k * 24u, 16);
+    }
+    rc = swpor_chal_from_items(items, l, n, max_l, out);
+    free(items);
+    return rc;
+}

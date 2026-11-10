@@ -314,44 +314,12 @@ static int with_file(conn_t *c, const uint8_t *p, size_t len, read_op_fn fn)
     return rc;
 }
 
-/* CHALLENGE：file_id ‖ mode u8 ‖ l u32 ‖ [显式 l × (index u64 ‖ ν 16B)] 或 [种子 32B] */
+/* CHALLENGE：解析与校验见 swpor_chal_decode_wire（frame.c） */
 static int op_challenge(conn_t *c, swpor_store_t *st, const uint8_t *p, size_t len)
 {
-    if (len < 37) {
-        return SWPOR_E_PARSE;
-    }
-    const uint8_t mode = p[32];
-    const uint32_t l = swpor_load_be32(p + 33);
-    const uint32_t max_l = c->srv->cfg.max_l;
     const swpor_tag_header_t *h = swpor_store_header(st);
-    if (l == 0 || l > max_l) {
-        return SWPOR_E_RANGE; /* SPEC 8.3：l 上限，防止资源耗尽 */
-    }
     swpor_chal_t *chal = NULL;
-    int rc;
-    if (mode == SWPOR_CHAL_SEED) {
-        if (len != 37u + 32u) {
-            return SWPOR_E_PARSE;
-        }
-        rc = swpor_chal_from_seed(p + 37, h->n, l, &chal);
-    } else if (mode == SWPOR_CHAL_EXPLICIT) {
-        if (len != 37u + (size_t)l * 24u) {
-            return SWPOR_E_PARSE;
-        }
-        swpor_chal_item_t *items = malloc((size_t)l * sizeof(*items));
-        if (items == NULL) {
-            return SWPOR_E_NOMEM;
-        }
-        for (uint32_t k = 0; k < l; k++) {
-            items[k].index = swpor_load_be64(p + 37 + (size_t)k * 24u);
-            memcpy(items[k].nu, p + 45 + (size_t)k * 24u, 16);
-        }
-        /* 校验：下标互不相同、< n、ν ∈ B（SPEC 4.1 Priv.P 第 1 步、SPEC 11 第 5 条） */
-        rc = swpor_chal_from_items(items, l, h->n, max_l, &chal);
-        free(items);
-    } else {
-        return SWPOR_E_PARSE;
-    }
+    int rc = swpor_chal_decode_wire(p, len, h->n, c->srv->cfg.max_l, &chal);
     if (rc != SWPOR_OK) {
         return rc;
     }

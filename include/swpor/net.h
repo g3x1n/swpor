@@ -56,6 +56,23 @@ int swpor_frame_recv(void *sock, size_t max_len, uint8_t *type, uint8_t **payloa
 /** 解析 "host:port"（port 省略时为 7878）。 */
 int swpor_parse_hostport(const char *s, char *host, size_t host_cap, uint16_t *port);
 
+/**
+ * 解析 CHALLENGE payload（SPEC 8.3）：file_id ‖ mode ‖ l ‖ [显式 l × (index ‖ ν)] 或 [种子 seed]。
+ * 只检查格式与 l 上限；下标范围等需要 n 的检查由 swpor_chal_decode_wire 完成。
+ * @param file_id  输出
+ * @param mode     输出：SWPOR_CHAL_EXPLICIT / SWPOR_CHAL_SEED
+ * @param l        输出
+ */
+int swpor_chal_peek_wire(const uint8_t *p, size_t len, uint32_t max_l, uint8_t file_id[32],
+                         uint8_t *mode, uint32_t *l);
+
+/**
+ * 完整解析 CHALLENGE payload 并展开为挑战：显式模式校验下标互不相同、< n、ν ∈ B；
+ * 种子模式按 SPEC 3.5.2 展开（SPEC 4.1 Priv.P 第 1 步、SPEC 11 第 5、6 条）。
+ */
+int swpor_chal_decode_wire(const uint8_t *p, size_t len, uint64_t n, uint32_t max_l,
+                           swpor_chal_t **out);
+
 /* ---- 客户端 ---- */
 
 typedef struct swpor_client swpor_client_t;

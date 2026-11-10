@@ -18,6 +18,7 @@ option(SWPOR_BUILD_SERVER "Build the storage server (pord)" ${_swpor_server_defa
 option(SWPOR_BUILD_TESTS  "Build unit tests"                ON)
 option(SWPOR_WERROR       "Treat warnings as errors"        ON)
 option(SWPOR_SANITIZE     "Enable ASan/UBSan in Debug builds" ON)
+option(SWPOR_FUZZ        "Build libFuzzer targets (requires clang with -fsanitize=fuzzer)" OFF)
 option(SWPOR_TESTING      "Compile deterministic RNG hooks for tests (never in releases)" OFF)
 
 set(CMAKE_C_STANDARD 11)
