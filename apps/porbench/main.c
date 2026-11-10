@@ -528,7 +528,7 @@ static int cmd_run(int argc, char **argv, int sweep)
     rc = bench_keys_init(&bk);
     char item[64];
     for (int a = 0; rc == SWPOR_OK && list_item(schemes, a, item, sizeof(item)) == 0; a++) {
-        char scheme[16];
+        char scheme[sizeof(item)]; /* 与 item 等长，避免 -Wformat-truncation */
         (void)snprintf(scheme, sizeof(scheme), "%s", item);
         if (strcmp(scheme, "priv") != 0 && strcmp(scheme, "pub") != 0 && strcmp(scheme, "mac") != 0) {
             fprintf(stderr, PROG ": unknown scheme %s\n", scheme);
