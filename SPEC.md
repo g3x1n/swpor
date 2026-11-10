@@ -1,6 +1,6 @@
 # SPEC.md — swpor：基于 Shacham–Waters 紧凑可恢复性证明的数据审计系统
 
-> 版本：v0.7（草案） · 状态：待评审
+> 版本：v0.8（草案） · 状态：待评审
 > 依据论文：H. Shacham, B. Waters. *Compact Proofs of Retrievability*. Asiacrypt 2008（本仓库所附 PDF 为完整版）。
 > 本文件是实现的**唯一事实来源**。代码与本文件不一致时，以本文件为准；需要偏离时，先改本文件（并在第 14 节"变更记录"登记），再改代码。
 
@@ -84,7 +84,18 @@
 - 论文用对称配对 e: G × G → GT 描述公开方案；本项目按论文脚注 19 改为非对称配对：σ_i、H(·)、u_j ∈ G1，公钥 v ∈ G2，安全性规约到 co-CDH。
 
 ### 2.1 构建与目标平台
-- 构建系统：**CMake ≥ 3.21**（`CMakePresets.json` 需要）；依赖管理用 **vcpkg 清单模式**（仓库根目录 `vcpkg.json`），三个平台用同一份依赖声明。vcpkg 中没有的依赖（如 blst）以 git submodule 方式放在 `third_party/`，由 CMake 直接编译。
+- 构建系统：**CMake ≥ 3.21**（`CMakePresets.json` 需要）。依赖按平台分别获取，CI 与本地开发一致：
+
+| 平台 | 依赖来源 | CMake 预设 |
+|---|---|---|
+| Linux x86_64 | 系统包管理器 `apt`（`libssl-dev`、`libcmocka-dev`、`libisal-dev`） | `debug` / `release` |
+| macOS arm64 | Homebrew（`openssl@3`、`cmocka`、`isa-l`） | `debug` / `release` |
+| Windows x64 | **vcpkg 清单模式**（仓库根目录 `vcpkg.json`） | `windows-debug` / `windows-release` |
+
+  - 理由：vcpkg 的 `isal` 端口不支持 arm64 macOS；Linux 与 macOS 的系统包是预编译的，CI 更快，且与部署环境一致；Windows 没有合适的系统包管理器，使用 vcpkg。
+  - 各平台的依赖版本可能不同。文件格式与协议不依赖库的版本，跨平台逐字节一致由 T-25 检查。
+  - `vcpkg.json` 仍可在 Linux / macOS 上通过 `vcpkg-*` 预设使用（`isal` 在 arm64 macOS 上不经 vcpkg 安装，需另用 Homebrew），但不是这两个平台的主路径。
+  - vcpkg 与系统包管理器中都没有的依赖（如 blst）以 git submodule 方式放在 `third_party/`，由 CMake 直接编译。
 - 支持平台分两级：
 
 | 级别 | 平台 | 要求 |
@@ -580,3 +591,4 @@ porbench detect [--n 10000] [--s 1] [--l 128] [--ratios 0.001,0.005,0.01,0.05,0.
 | 2026-11-10 | v0.5 | 明确 α_j 域分隔串 `SWPOR-ALPHA-V1`（3.3）、HKDF 参数（4.1）、种子挑战 l ≥ n 与 stream 读取规则（3.5.2）、CTR 的 IV 与置换算法细节（5）；新增 GET_SIGMAS/SIGMAS 消息（8.3）；定义 `tamper` 各模式语义（9.2）；T-25 固定创建时间；修正变更记录节号 | |
 | 2026-11-11 | v0.6 | 登记 v0.5 实现中补充的行为：`porctl delete`、`--tag-out`、`--timeout`；`--trace -` 写 stderr；新增 9.4.1 `porta`、9.4.2 `porbench` 命令行；Pub 方案不支持置乱 / 加密（5）；远程检索先下载到临时目录（6）；STORE 不覆盖已有文件、清理未完成上传、上传期间只允许 STORE_*（8.3）；Simple-MAC 基线定义（10.3） | |
 | 2026-11-11 | v0.7 | 2.1：CI 的 Windows 运行器固定为 `windows-2022`（`windows-latest` 不含 VS 2022） | |
+| 2026-11-11 | v0.8 | 2.1：依赖按平台获取——Linux 用 apt、macOS 用 Homebrew、Windows 用 vcpkg（vcpkg 的 isal 端口不支持 arm64 macOS） | |
