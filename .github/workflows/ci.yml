@@ -37,6 +37,11 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@latest
 
+      # vcpkg 的 isal 端口在 x86_64 上需要 nasm 汇编器；Windows 上 vcpkg 会自动下载，Linux 需要自行安装
+      - name: Install nasm (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:

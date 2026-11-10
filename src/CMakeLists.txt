@@ -29,8 +29,8 @@ target_include_directories(swpor
         "${CMAKE_CURRENT_SOURCE_DIR}/core"
         "${CMAKE_CURRENT_SOURCE_DIR}/platform")
 
-# ---- Intel ISA-L（纠删码，SPEC 2）：Homebrew / apt / vcpkg 的头文件布局不同，按文件名查找 ----
-find_path(SWPOR_ISAL_INCLUDE_DIR erasure_code.h PATH_SUFFIXES isa-l include/isa-l)
+# ---- Intel ISA-L（纠删码，SPEC 2）：头文件在 include/isa-l/（Homebrew、apt）或 include/isal/（vcpkg），按文件名查找 ----
+find_path(SWPOR_ISAL_INCLUDE_DIR erasure_code.h PATH_SUFFIXES isa-l isal include/isa-l include/isal)
 find_library(SWPOR_ISAL_LIBRARY NAMES isal libisal isa-l isa-l_static)
 if(NOT SWPOR_ISAL_INCLUDE_DIR OR NOT SWPOR_ISAL_LIBRARY)
     message(FATAL_ERROR "swpor: 未找到 ISA-L（brew install isa-l / apt install libisal-dev / vcpkg isal）")
