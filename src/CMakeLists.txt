@@ -1,13 +1,17 @@
 # libswpor：核心库（SPEC 9.1）。不含任何 CLI 或应用层代码。
 
 add_library(swpor STATIC
+    core/challenge.c
     core/ctx.c
     core/error.c
+    core/fr.c
+    core/prf.c
+    core/prove.c
     core/selftest.c
+    core/tag_header.c
+    priv/priv.c
     platform/platform_posix.c
     platform/platform_win32.c
-    # 以下模块随里程碑逐步加入：
-    # priv/  (M1)  pub/  (M4)  ec/  (M2)  store/  (M2)  net/  (M3)
 )
 add_library(swpor::swpor ALIAS swpor)
 
@@ -27,7 +31,7 @@ target_link_libraries(swpor
         Threads::Threads)
 
 if(WIN32)
-    target_link_libraries(swpor PUBLIC ws2_32)
+    target_link_libraries(swpor PUBLIC ws2_32 advapi32)
 endif()
 
 if(SWPOR_TESTING)

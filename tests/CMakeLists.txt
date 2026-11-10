@@ -1,6 +1,20 @@
 # 测试（SPEC 10）。
 # cmocka 查找顺序：CMake 配置包（vcpkg / Homebrew）→ pkg-config（apt）。找不到时跳过单元测试。
 
+# ---- 差分测试 T-03（不依赖 cmocka）：C 端 ref_dump + Python 参考实现 ----
+add_executable(ref_dump ref/ref_dump.c)
+target_link_libraries(ref_dump PRIVATE swpor::swpor)
+target_include_directories(ref_dump PRIVATE "${PROJECT_SOURCE_DIR}/src/platform")
+swpor_set_warnings(ref_dump)
+swpor_enable_sanitizers(ref_dump)
+
+find_package(Python3 3.9 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME T03_diff_python_ref
+             COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ref/run_diff.py"
+                     "${PROJECT_BINARY_DIR}")
+endif()
+
 find_package(cmocka CONFIG QUIET)
 if(TARGET cmocka::cmocka)
     set(SWPOR_CMOCKA cmocka::cmocka)
@@ -34,3 +48,5 @@ function(swpor_add_test name)
 endfunction()
 
 swpor_add_test(test_infra unit/test_infra.c)
+swpor_add_test(test_core unit/test_core.c)
+swpor_add_test(test_priv unit/test_priv.c)
