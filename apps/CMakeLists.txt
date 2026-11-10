@@ -16,6 +16,7 @@ function(swpor_add_app name)
     target_include_directories(${name} PRIVATE "${PROJECT_SOURCE_DIR}/src/platform")
     swpor_set_warnings(${name})
     swpor_enable_sanitizers(${name})
+    swpor_utf8_manifest(${name})
     install(TARGETS ${name} RUNTIME DESTINATION bin)
 endfunction()
 
