@@ -1,4 +1,4 @@
-# 三平台构建与测试（SPEC 2.1）。依赖统一通过 vcpkg 清单模式（vcpkg.json）安装。
+# 三平台构建与测试（SPEC 2.1）。依赖按平台获取：Linux 用 apt，macOS 用 Homebrew，Windows 用 vcpkg（vcpkg.json）。
 name: CI
 
 on:
@@ -17,10 +17,10 @@ jobs:
         include:
           - name: linux-x64
             os: ubuntu-latest
-            preset: vcpkg-debug
+            preset: debug
           - name: macos-arm64
             os: macos-latest
-            preset: vcpkg-debug
+            preset: debug
           - name: windows-x64
             os: windows-2022   # windows-latest 已不含 VS 2022，与 windows-debug 预设的生成器不匹配
             preset: windows-debug
@@ -37,12 +37,17 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      # vcpkg 的 isal 端口在 x86_64 上需要 nasm 与 yasm 汇编器；Windows 上 vcpkg 会自动下载，Linux 需要自行安装
-      - name: Install nasm and yasm (Linux)
+      - name: Install dependencies (Linux, apt)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y nasm yasm
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev libcmocka-dev libisal-dev pkg-config
 
+      - name: Install dependencies (macOS, Homebrew)
+        if: runner.os == 'macOS'
+        run: brew install openssl@3 cmocka isa-l
+
+      # 以下两步只在 Windows 上运行：Windows 依赖由 vcpkg 清单模式安装
       - name: Restore vcpkg binary cache
+        if: runner.os == 'Windows'
         uses: actions/cache@v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
@@ -50,15 +55,12 @@ jobs:
           restore-keys: vcpkg-${{ matrix.name }}-
 
       - name: Bootstrap vcpkg
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
-          else
-            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-          fi
+          "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
