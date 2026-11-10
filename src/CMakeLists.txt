@@ -9,7 +9,12 @@ add_library(swpor STATIC
     core/prove.c
     core/selftest.c
     core/tag_header.c
+    ec/ec.c
+    ec/pipeline.c
     priv/priv.c
+    pub/pub.c
+    store/keyfile.c
+    store/store.c
     platform/platform_posix.c
     platform/platform_win32.c
 )
@@ -24,7 +29,18 @@ target_include_directories(swpor
         "${CMAKE_CURRENT_SOURCE_DIR}/core"
         "${CMAKE_CURRENT_SOURCE_DIR}/platform")
 
+# ---- Intel ISA-L（纠删码，SPEC 2）：Homebrew / apt / vcpkg 的头文件布局不同，按文件名查找 ----
+find_path(SWPOR_ISAL_INCLUDE_DIR erasure_code.h PATH_SUFFIXES isa-l include/isa-l)
+find_library(SWPOR_ISAL_LIBRARY NAMES isal libisal isa-l)
+if(NOT SWPOR_ISAL_INCLUDE_DIR OR NOT SWPOR_ISAL_LIBRARY)
+    message(FATAL_ERROR "swpor: 未找到 ISA-L（brew install isa-l / apt install libisal-dev / vcpkg isal）")
+endif()
+message(STATUS "swpor: ISA-L ${SWPOR_ISAL_LIBRARY}")
+target_include_directories(swpor SYSTEM PRIVATE "${SWPOR_ISAL_INCLUDE_DIR}")
+
 target_link_libraries(swpor
+    PRIVATE
+        "${SWPOR_ISAL_LIBRARY}"
     PUBLIC
         OpenSSL::Crypto
         swpor::blst
