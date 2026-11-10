@@ -22,7 +22,7 @@ jobs:
             os: macos-latest
             preset: vcpkg-debug
           - name: windows-x64
-            os: windows-latest
+            os: windows-2022   # windows-latest 已不含 VS 2022，与 windows-debug 预设的生成器不匹配
             preset: windows-debug
 
     env:
