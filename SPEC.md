@@ -1,6 +1,6 @@
 # SPEC.md — swpor：基于 Shacham–Waters 紧凑可恢复性证明的数据审计系统
 
-> 版本：v0.5（草案） · 状态：待评审
+> 版本：v0.6（草案） · 状态：待评审
 > 依据论文：H. Shacham, B. Waters. *Compact Proofs of Retrievability*. Asiacrypt 2008（本仓库所附 PDF 为完整版）。
 > 本文件是实现的**唯一事实来源**。代码与本文件不一致时，以本文件为准；需要偏离时，先改本文件（并在第 14 节"变更记录"登记），再改代码。
 
@@ -299,7 +299,8 @@ M ──[可选] AES-256-CTR(k_fenc) ──► 切成 BLOCK_BYTES 大小的数�
 **安全性说明（必须写入测试报告和论文的"局限性"部分）：**
 - 条带 RS 只在**单个条带内**抵抗对抗性擦除。若服务端知道哪些块属于同一条带，就可以集中删除一个条带中超过 m 块而让文件不可恢复，同时只让很少的审计失败。
 - 秘密置乱 + 文件加密是为了让服务端无法识别条带结构（思路与论文附录 A.2 相同）。但这依赖于密钥保密，因此**只提供私有可恢复性**；Pub 方案在启用置乱时失去公开可恢复性。
-- 对此折中的严格安全性分析尚未完成，登记为 **OPEN-1**。这本身也是一个可以写进论文的研究点。
+- 对此折中的严格安全性分析尚未完成，登记为 **OPEN-1**。
+- **Pub 方案不支持置乱与文件加密**：Pub 文件标签（4.3）没有保存 k_perm / k_fenc 的位置，因此 Pub 方案只允许启用 RS；请求 `--perm` / `--encrypt` 时返回参数错误（库返回 `SWPOR_E_UNSUPPORTED`）。这本身也是一个可以写进论文的研究点。
 
 ---
 
@@ -316,6 +317,7 @@ M ──[可选] AES-256-CTR(k_fenc) ──► 切成 BLOCK_BYTES 大小的数�
 - 证明生成时按需随机读取 l 个块，不得把整个文件读进内存（文件可能是 GB 级）。
 - 本地模式下，客户端用同样的布局写入一个本地目录，模拟服务端。
 - 检索时客户端通过 GET_BLOCKS 与 GET_SIGMAS（8.3）取回块与 σ_i，逐块验证完好性（第 5 节）。
+- 远程检索的实现方式：客户端先按批顺序把 tag、全部块与 σ_i 下载到本地临时目录（同一布局，`<输出文件>.swpor-dl`），再按本地模式解码，完成后删除临时目录。只有完整恢复成功才生成输出文件。
 
 ---
 
@@ -370,6 +372,8 @@ M ──[可选] AES-256-CTR(k_fenc) ──► 切成 BLOCK_BYTES 大小的数�
 | 0x7F | ERROR | S→C | code u16 ‖ msg_len u16 ‖ msg（UTF-8） |
 
 - 服务端对 CHALLENGE 的 l 设上限（默认 4096），防止资源耗尽。
+- STORE：若该 file_id 已存在完整文件，服务端返回 ERROR（`EXISTS`），不覆盖。上传未以 STORE_END 正常结束（连接断开或出错）时，服务端删除已写入的残留文件。STORE_END 时块与 σ 未全部收到则返回 ERROR。
+- 一个连接在 STORE_BEGIN 与 STORE_END 之间只能发送 STORE_BLOCKS / STORE_SIGMAS / STORE_END，其他请求一律返回 ERROR 并关闭连接。
 
 ### 8.4 服务端并发模型：固定大小线程池
 - 主线程负责 `accept()`，把新连接放入**有界**任务队列；队列满时直接返回 ERROR（code = BUSY）并关闭连接，不无限排队。
@@ -399,12 +403,14 @@ M ──[可选] AES-256-CTR(k_fenc) ──► 切成 BLOCK_BYTES 大小的数�
 porctl keygen   --scheme priv|pub  --out <dir>
 porctl store    --key <keyfile> --in <file> [--s 128] [--rs 64:64] [--no-rs] [--perm] [--encrypt]
                 (--local <dir> | --server <host:port>)
-                → 输出 file_id 和本地保存的 tag 路径
+                [--tag-out <path>]
+                → 输出 file_id 和本地保存的 tag 路径（默认 ./<file_id 十六进制>.tag）
 porctl audit    --key <keyfile> --tag <tagfile> [--l 128] [--seed-mode]
                 (--local <dir> | --server <host:port>)
                 → 输出 PASS / FAIL、耗时、响应大小
 porctl retrieve --key <keyfile> --tag <tagfile> --out <file>  (--local <dir> | --server <host:port>)
 porctl info     --tag <tagfile>
+porctl delete   --tag <tagfile> (--local <dir> | --server <host:port>)
 porctl tamper   --local <dir> --file-id <hex> --mode flip|zero|delete --ratio <0..1> [--seed N]
                 （仅用于测试与演示：在本地存储中按比例篡改块。flip = 每个选中块随机翻转 1 个比特；
                  zero / delete = 把选中块整块置 0。恢复时整块为 0 且 σ_i 校验失败的块按擦除处理）
@@ -412,6 +418,8 @@ porctl tamper   --local <dir> --file-id <hex> --mode flip|zero|delete --ratio <0
 
 - 退出码：0 = 成功/PASS；1 = 审计 FAIL；2 = 参数错误；3 = I/O 错误；4 = 网络错误；5 = 密码学/格式错误。
 - 所有子命令支持 `--json`，输出机器可读结果，供测试脚本使用。
+- 远程模式（`--server`）支持 `--timeout <ms>`，网络读写超时，默认 30000。
+- `porctl doctor`、`porctl version`、`porctl help` 为辅助子命令。
 
 ### 9.3 `pord`
 ```
@@ -427,7 +435,7 @@ void swpor_set_trace(swpor_ctx_t *ctx, swpor_trace_fn fn, void *user);
 ```
 
 - 未设置回调时没有任何开销（只是一次空指针判断）。
-- `porctl` 与 `pord` 增加 `--trace <file|->` 选项，把事件以 **NDJSON**（每行一个 JSON 对象）写出。
+- `porctl` 与 `pord` 增加 `--trace <file|->` 选项（`-` 表示写到 **stderr**，避免与 `--json` 的 stdout 输出混在一起），把事件以 **NDJSON**（每行一个 JSON 对象）写出。
 - 事件类型（v1）：
 
 | type | 触发时机 | 主要字段 |
@@ -442,6 +450,30 @@ void swpor_set_trace(swpor_ctx_t *ctx, swpor_trace_fn fn, void *user);
 | `tamper` | `porctl tamper` 篡改块 | indices, mode |
 
 - **任何事件都不得包含秘密数据**（msk、k_prf、α_j、x 等）；也不输出完整的块内容或 σ_i 值。
+
+### 9.4.1 `porta`
+```
+porta --pk <pub.pk> --tag <t1[,t2,...]> (--server <host:port> | --local <dir>)
+      [--l 128] [--explicit] [--interval <秒>] [--count N] [--log <file>] [--json] [--timeout <ms>]
+```
+- 只接受 Pub 公钥文件 `pub.pk`，传入私钥文件时报参数错误。
+- 默认使用种子挑战（3.5.2），`--explicit` 改用显式挑战。
+- `--count` 默认 1（审计一轮）；`--count 0` 表示一直运行直到 SIGINT / SIGTERM；两轮之间等待 `--interval` 秒（默认 60）。
+- `--log` 追加写入审计日志，每行一个 JSON 对象：time、file_id、result（PASS / FAIL / ERROR）、l、challenge、elapsed_ms、proof_bytes，出错时另有 error。
+- 退出码：任一文件 FAIL 为 1；否则按 9.2 的约定。
+
+### 9.4.2 `porbench`
+```
+porbench run    --scheme priv|pub|mac --size <bytes[K|M|G]> [--s 128] [--l 128] [--rs k:m | --no-rs]
+                [--reps 10] [--audits 10] [--dir bench/tmp] [--out <csv>]
+porbench sweep  --scheme <列表> --sizes <列表> --s <列表> --l <列表> [其余同 run]
+porbench detect [--n 10000] [--s 1] [--l 128] [--ratios 0.001,0.005,0.01,0.05,0.1] [--trials 1000]
+                [--dir bench/tmp] [--out <csv>]
+```
+- 在进程内调用库函数，数据写在 `--dir` 下，不经过网络。CSV 每行前 8 列为环境信息（date、commit、cpu、cores、mem_bytes、os、compiler、build_type，见 10.3）。
+- `run` / `sweep` 的指标列：preprocess_ms、tag_ms（预处理 + 打标签 + 写盘总时间减去单独测得的预处理时间）、tag_mb_s、prove_ms、verify_ms（`--audits` 次的平均）、challenge_bytes、proof_bytes、storage_bytes、storage_overhead、pass。
+- `detect`（T-22）：不启用 RS，随机选 d = round(ratio·n) 个块各翻转 1 比特，做 `--trials` 次显式挑战审计，输出检测率与理论值 1 − C(n−d, l)/C(n, l)。
+- `mac` 为 Simple-MAC 基线（见 10.3）。
 
 ### 9.5 可视化界面（M-UI，选做）
 - 定位：课程答辩与软著截图用的**教学演示**，不是核心产品；核心产品仍是 CLI（`porctl` / `pord` / `porta`）。
@@ -494,6 +526,7 @@ void swpor_set_trace(swpor_ctx_t *ctx, swpor_trace_fn fn, void *user);
 | T-24 | 方案对比：Priv vs Pub vs Simple-MAC 基线（vs RSA，若做了 M5） |
 
 - 每个数据点至少重复 10 次，报告中位数与四分位数。
+- **Simple-MAC 基线**（T-24，只在 `porbench` 内实现，不进入 libswpor 与网络协议）：与其他方案共用第 5 节预处理；σ_i = HMAC-SHA-256(k, file_id ‖ I2OSP(i, 8) ‖ m_i)，k 为每文件随机 32 字节密钥；挑战为 l 个下标（大小按 37 + 8·l 字节计）；证明为被挑战的 l 个块及其 MAC（l·(BLOCK_BYTES + 32) 字节）；验证方重算并常数时间比较。
 - 每次基准运行时记录：CPU 型号、核数、内存、OS、编译器版本、编译选项、git commit 哈希。结果保存为 `bench/results/<日期>_<commit>.csv`。
 
 ### 10.4 工程质量
@@ -544,4 +577,5 @@ void swpor_set_trace(swpor_ctx_t *ctx, swpor_trace_fn fn, void *user);
 | 2026-11-05 | v0.2 | 确定 CMake 与线程池（关闭 OPEN-2、OPEN-5）；新增 2.1 平台要求、8.4 并发模型、9.4 trace 事件流、9.5 可视化界面与 M-UI 里程碑；新增 OPEN-6 | |
 | 2026-11-05 | v0.3 | 新增 Windows 支持（Tier 2）；2.1 节改为三级平台支持、vcpkg、平台抽象层与发布流程；新增 T-25、T-26 | |
 | 2026-11-05 | v0.4 | Windows 只做客户端，`pord` 不在 Windows 上构建（新增 CMake 选项 `SWPOR_BUILD_SERVER`） | |
+| 2026-11-11 | v0.6 | 登记 v0.5 实现中补充的行为：`porctl delete`、`--tag-out`、`--timeout`；`--trace -` 写 stderr；新增 9.4.1 `porta`、9.4.2 `porbench` 命令行；Pub 方案不支持置乱 / 加密（5）；远程检索先下载到临时目录（6）；STORE 不覆盖已有文件、清理未完成上传、上传期间只允许 STORE_*（8.3）；Simple-MAC 基线定义（10.3） | |
 | 2026-11-10 | v0.5 | 明确 α_j 域分隔串 `SWPOR-ALPHA-V1`（3.3）、HKDF 参数（4.1）、种子挑战 l ≥ n 与 stream 读取规则（3.5.2）、CTR 的 IV 与置换算法细节（5）；新增 GET_SIGMAS/SIGMAS 消息（8.3）；定义 `tamper` 各模式语义（9.2）；T-25 固定创建时间；修正变更记录节号 | |
