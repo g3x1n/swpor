@@ -1,8 +1,8 @@
 # SPEC.md — swpor：基于 Shacham–Waters 紧凑可恢复性证明的数据审计系统
 
-> 版本：v0.4（草案） · 状态：待评审
+> 版本：v0.5（草案） · 状态：待评审
 > 依据论文：H. Shacham, B. Waters. *Compact Proofs of Retrievability*. Asiacrypt 2008（本仓库所附 PDF 为完整版）。
-> 本文件是实现的**唯一事实来源**。代码与本文件不一致时，以本文件为准；需要偏离时，先改本文件（并在第 12 节"变更记录"登记），再改代码。
+> 本文件是实现的**唯一事实来源**。代码与本文件不一致时，以本文件为准；需要偏离时，先改本文件（并在第 14 节"变更记录"登记），再改代码。
 
 ---
 
@@ -131,7 +131,10 @@
 f_k(i) = OS2IP( HMAC-SHA-512(k, "SWPOR-PRF-V1" ‖ I2OSP(i, 8)) ) mod r
 ```
 - k 为 32 字节密钥。512 bit 输出模 255 bit 的 r，偏差可忽略（< 2^-256）。
-- 同一构造用于派生 α_j（见 4.1），使用不同的域分隔串。
+- 同一构造用于派生 α_j（见 4.1），使用不同的域分隔串：
+```
+α_j = OS2IP( HMAC-SHA-512(k_alpha, "SWPOR-ALPHA-V1" ‖ I2OSP(j, 8)) ) mod r
+```
 
 ### 3.4 哈希到 G1
 ```
@@ -150,11 +153,13 @@ u_j         = hash_to_G1( u_seed ‖ I2OSP(j, 2), DST = "SWPOR-V1-U-BLS12381G1_X
 
 **3.5.2 种子挑战（Pub 方案默认；Priv 方案可选，此时安全性依赖随机预言机）**
 - 验证方只发送 32 字节随机种子 seed 和 l。
-- 双方用以下确定性过程展开得到同一个 Q：
+- 若 l ≥ n，则 I = {0, …, n−1}（不从 stream 中取下标），ν_i 仍按下述方式依次从 stream 中取 n 个。
+- 否则，双方用以下确定性过程展开得到同一个 Q：
 ```
 stream = HMAC-SHA-256(seed, "SWPOR-CHAL-V1" ‖ I2OSP(ctr, 8))，ctr = 0,1,2,…
 ```
   从 stream 中依次读取：先用拒绝采样取 l 个互不相同、落在 [0, n) 的下标（每次取 8 字节，取模前先拒绝 ≥ ⌊2^64 / n⌋·n 的值），再依次取 l 个 16 字节的 ν_i（全 0 则跳过）。
+- stream 是各 ctr 输出按顺序拼接得到的字节流，下标与 ν_i 依次从中连续读取（不跨 ctr 对齐）。取得的 Q 最后按 i 升序排列，ν_i 跟随其下标。
 - 这一过程必须在 `src/core/challenge.c` 中只实现一次，客户端、服务端、审计者共用。
 
 ### 3.6 默认参数
@@ -177,7 +182,7 @@ stream = HMAC-SHA-256(seed, "SWPOR-CHAL-V1" ‖ I2OSP(ctr, 8))，ctr = 0,1,2,…
 
 **Priv.Kg()**
 - 生成 32 字节主密钥 `msk`。
-- 派生：`k_tag = HKDF(msk, info="SWPOR-V1-TAGKEY")`。
+- 派生：`k_tag = HKDF-SHA-256(IKM = msk, salt = 空, info = "SWPOR-V1-TAGKEY", L = 32)`。
 - sk = msk；无公钥。
 - 注：论文的 sk = (k_enc, k_mac)，本项目用一把 AEAD 密钥 `k_tag` 同时承担"加密 + 认证"，等价于论文的 Enc-then-MAC 组合。
 
@@ -287,7 +292,8 @@ M ──[可选] AES-256-CTR(k_fenc) ──► 切成 BLOCK_BYTES 大小的数�
 ```
 
 - 默认 k = m = 64（ρ = 1/2）。最后一个条带不足 k 块时用全零块补齐（补齐的块也参与存储与审计）。
-- 置换：用 k_perm 驱动的 Fisher–Yates 洗牌，随机源为 HMAC-SHA-256(k_perm, "SWPOR-PERM-V1" ‖ ctr)，拒绝采样取下标。
+- 文件加密：AES-256-CTR，密钥 k_fenc，初始计数块（IV）为 16 字节全零。由于 k_fenc 每文件随机生成且只用于一次加密，固定 IV 是安全的。
+- 置换：用 k_perm 驱动的 Fisher–Yates 洗牌，随机源为 stream = HMAC-SHA-256(k_perm, "SWPOR-PERM-V1" ‖ I2OSP(ctr, 8))（ctr = 0,1,2,… 的输出顺序拼接）。从数组 P = [0, 1, …, n−1] 开始，对 i = n−1 递减到 1：从 stream 读 8 字节得 x，拒绝 x ≥ ⌊2^64/(i+1)⌋·(i+1) 的值，取 j = x mod (i+1)，交换 P[i] 与 P[j]。置换后位置 i 存放原第 P[i] 块。
 - **恢复**：读取全部块 → 逆置换 → 每个条带用任意 k 个完好块解码 → 拼接 → 解密 → 按 L 截断。验证块是否"完好"的方法：对单块做一次只含该块的挑战（l=1）或直接重算其 σ_i（Priv 方案下客户端有密钥）。
 
 **安全性说明（必须写入测试报告和论文的"局限性"部分）：**
@@ -309,6 +315,7 @@ M ──[可选] AES-256-CTR(k_fenc) ──► 切成 BLOCK_BYTES 大小的数�
 
 - 证明生成时按需随机读取 l 个块，不得把整个文件读进内存（文件可能是 GB 级）。
 - 本地模式下，客户端用同样的布局写入一个本地目录，模拟服务端。
+- 检索时客户端通过 GET_BLOCKS 与 GET_SIGMAS（8.3）取回块与 σ_i，逐块验证完好性（第 5 节）。
 
 ---
 
@@ -356,6 +363,8 @@ M ──[可选] AES-256-CTR(k_fenc) ──► 切成 BLOCK_BYTES 大小的数�
 | 0x31 | TAG | S→C | tag_len u32 ‖ tag |
 | 0x32 | GET_BLOCKS | C→S | file_id(32) ‖ start u64 ‖ count u32 |
 | 0x33 | BLOCKS | S→C | start u64 ‖ count u32 ‖ 块数据 |
+| 0x34 | GET_SIGMAS | C→S | file_id(32) ‖ start u64 ‖ count u32 |
+| 0x35 | SIGMAS | S→C | start u64 ‖ count u32 ‖ σ 数据 |
 | 0x40 | DELETE | C→S | file_id(32) |
 | 0x41 | OK | S→C | （空） |
 | 0x7F | ERROR | S→C | code u16 ‖ msg_len u16 ‖ msg（UTF-8） |
@@ -397,7 +406,8 @@ porctl audit    --key <keyfile> --tag <tagfile> [--l 128] [--seed-mode]
 porctl retrieve --key <keyfile> --tag <tagfile> --out <file>  (--local <dir> | --server <host:port>)
 porctl info     --tag <tagfile>
 porctl tamper   --local <dir> --file-id <hex> --mode flip|zero|delete --ratio <0..1> [--seed N]
-                （仅用于测试与演示：在本地存储中按比例篡改块）
+                （仅用于测试与演示：在本地存储中按比例篡改块。flip = 每个选中块随机翻转 1 个比特；
+                 zero / delete = 把选中块整块置 0。恢复时整块为 0 且 σ_i 校验失败的块按擦除处理）
 ```
 
 - 退出码：0 = 成功/PASS；1 = 审计 FAIL；2 = 参数错误；3 = I/O 错误；4 = 网络错误；5 = 密码学/格式错误。
@@ -469,7 +479,7 @@ void swpor_set_trace(swpor_ctx_t *ctx, swpor_trace_fn fn, void *user);
 | T-19 | Pub 方案：重复 T-04～T-08 | M4 |
 | T-20 | Pub 方案：σ 为非子群点、无穷远点、非法压缩编码时必须拒绝 | M4 |
 | T-21 | `porta` 只用 pk 和 t 就能完成审计 | M4 |
-| T-25 | 跨平台互通：在一个平台上 `store`，在另一个平台上 `audit` / `retrieve`（至少覆盖 macOS 客户端 ↔ Linux 服务端，以及 Windows 客户端 ↔ Linux 服务端）；同一输入与同一确定性测试随机源下，三个平台生成的标签文件逐字节相同 | M3 |
+| T-25 | 跨平台互通（`SWPOR_TESTING` 下创建时间字段也固定为确定值）：在一个平台上 `store`，在另一个平台上 `audit` / `retrieve`（至少覆盖 macOS 客户端 ↔ Linux 服务端，以及 Windows 客户端 ↔ Linux 服务端）；同一输入与同一确定性测试随机源下，三个平台生成的标签文件逐字节相同 | M3 |
 | T-26 | 非 ASCII 路径（中文文件名、带空格的路径）在三个平台上都能正常存储与恢复 | M2 |
 
 ### 10.2 篡改检测率实验
@@ -534,3 +544,4 @@ void swpor_set_trace(swpor_ctx_t *ctx, swpor_trace_fn fn, void *user);
 | 2026-11-05 | v0.2 | 确定 CMake 与线程池（关闭 OPEN-2、OPEN-5）；新增 2.1 平台要求、8.4 并发模型、9.4 trace 事件流、9.5 可视化界面与 M-UI 里程碑；新增 OPEN-6 | |
 | 2026-11-05 | v0.3 | 新增 Windows 支持（Tier 2）；2.1 节改为三级平台支持、vcpkg、平台抽象层与发布流程；新增 T-25、T-26 | |
 | 2026-11-05 | v0.4 | Windows 只做客户端，`pord` 不在 Windows 上构建（新增 CMake 选项 `SWPOR_BUILD_SERVER`） | |
+| 2026-11-10 | v0.5 | 明确 α_j 域分隔串 `SWPOR-ALPHA-V1`（3.3）、HKDF 参数（4.1）、种子挑战 l ≥ n 与 stream 读取规则（3.5.2）、CTR 的 IV 与置换算法细节（5）；新增 GET_SIGMAS/SIGMAS 消息（8.3）；定义 `tamper` 各模式语义（9.2）；T-25 固定创建时间；修正变更记录节号 | |
