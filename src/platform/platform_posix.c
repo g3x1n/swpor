@@ -20,6 +20,9 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
 
 #include "swpor/error.h"
 
@@ -62,6 +65,63 @@ unsigned swpor_cpu_count(void)
         return 1024;
     }
     return (unsigned)n;
+}
+
+void swpor_cpu_model(char *out, size_t cap)
+{
+    if (out == NULL || cap == 0) {
+        return;
+    }
+    (void)snprintf(out, cap, "unknown");
+#if defined(__APPLE__)
+    size_t len = cap;
+    if (sysctlbyname("machdep.cpu.brand_string", out, &len, NULL, 0) != 0) {
+        (void)snprintf(out, cap, "unknown");
+    }
+#elif defined(__linux__)
+    FILE *f = fopen("/proc/cpuinfo", "rb");
+    if (f == NULL) {
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (strncmp(line, "model name", 10) == 0) {
+            const char *colon = strchr(line, ':');
+            if (colon != NULL) {
+                colon++;
+                while (*colon == ' ' || *colon == '\t') {
+                    colon++;
+                }
+                (void)snprintf(out, cap, "%s", colon);
+                size_t l = strlen(out);
+                while (l > 0 && (out[l - 1] == '\n' || out[l - 1] == '\r')) {
+                    out[--l] = '\0';
+                }
+            }
+            break;
+        }
+    }
+    fclose(f);
+#endif
+}
+
+uint64_t swpor_mem_total(void)
+{
+#if defined(__APPLE__)
+    uint64_t mem = 0;
+    size_t len = sizeof(mem);
+    if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) != 0) {
+        return 0;
+    }
+    return mem;
+#else
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long psize = sysconf(_SC_PAGESIZE);
+    if (pages <= 0 || psize <= 0) {
+        return 0;
+    }
+    return (uint64_t)pages * (uint64_t)psize;
+#endif
 }
 
 void swpor_sleep_ms(uint32_t ms)

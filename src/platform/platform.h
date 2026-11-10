@@ -45,6 +45,12 @@ const char *swpor_platform_name(void);
 /** 返回在线 CPU 核数（至少为 1）。用于线程池默认大小（SPEC 8.4）。 */
 unsigned swpor_cpu_count(void);
 
+/** CPU 型号字符串（基准测试记录环境用，SPEC 10.3）。失败时写入 "unknown"。 */
+void swpor_cpu_model(char *out, size_t cap);
+
+/** 物理内存总量（字节），未知时返回 0。 */
+uint64_t swpor_mem_total(void);
+
 /** 当前线程休眠 ms 毫秒（porta 定时审计用）。 */
 void swpor_sleep_ms(uint32_t ms);
 

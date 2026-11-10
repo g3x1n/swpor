@@ -10,6 +10,7 @@
 #include <aclapi.h>
 #include <sddl.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -55,6 +56,28 @@ unsigned swpor_cpu_count(void)
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     return si.dwNumberOfProcessors > 0 ? (unsigned)si.dwNumberOfProcessors : 1u;
+}
+
+void swpor_cpu_model(char *out, size_t cap)
+{
+    if (out == NULL || cap == 0) {
+        return;
+    }
+    DWORD len = (DWORD)cap;
+    if (RegGetValueA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                     "ProcessorNameString", RRF_RT_REG_SZ, NULL, out, &len) != ERROR_SUCCESS) {
+        (void)snprintf(out, cap, "unknown");
+    }
+}
+
+uint64_t swpor_mem_total(void)
+{
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    if (!GlobalMemoryStatusEx(&ms)) {
+        return 0;
+    }
+    return (uint64_t)ms.ullTotalPhys;
 }
 
 void swpor_sleep_ms(uint32_t ms)

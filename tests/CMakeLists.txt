@@ -13,6 +13,9 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME T03_diff_python_ref
              COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ref/run_diff.py"
                      "${PROJECT_BINARY_DIR}")
+    add_test(NAME T14_T21_cli_integration
+             COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli.py"
+                     "${PROJECT_BINARY_DIR}")
 endif()
 
 find_package(cmocka CONFIG QUIET)
