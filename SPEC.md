@@ -1,6 +1,6 @@
 # SPEC.md — swpor：基于 Shacham–Waters 紧凑可恢复性证明的数据审计系统
 
-> 版本：v0.6（草案） · 状态：待评审
+> 版本：v0.7（草案） · 状态：待评审
 > 依据论文：H. Shacham, B. Waters. *Compact Proofs of Retrievability*. Asiacrypt 2008（本仓库所附 PDF 为完整版）。
 > 本文件是实现的**唯一事实来源**。代码与本文件不一致时，以本文件为准；需要偏离时，先改本文件（并在第 14 节"变更记录"登记），再改代码。
 
@@ -107,7 +107,7 @@
 - 不得使用 `epoll`、`kqueue`、`getrandom`、`fork`、`mmap` 等只在部分平台存在的接口；不使用 C11 `<threads.h>`（macOS 不支持）。网络并发模型因此选用线程池（见 8.4）。
 - 文件格式与网络协议在三个平台上逐字节一致；跨平台互通是测试项（T-25）。
 - 论文用的性能数据以 Linux 上的 Release 构建为准，并注明 CPU 型号；其他平台的数据只作参考。
-- CI：GitHub Actions 在 `ubuntu-latest`、`macos-latest`、`windows-latest` 三个平台上构建与测试。
+- CI：GitHub Actions 在 `ubuntu-latest`、`macos-latest`、`windows-2022` 三个平台上构建与测试。Windows 固定为 `windows-2022`，因为 `windows-latest` 镜像已不含 Visual Studio 2022，与 `windows-*` 预设使用的 "Visual Studio 17 2022" 生成器不匹配。
 - 发布：打 git tag（如 `v0.3.0`）后，CI 自动为三个平台构建 Release 版本，打包上传到 GitHub Releases（CPack 生成 `.tar.gz` / `.zip`）。
 
 ---
@@ -579,3 +579,4 @@ porbench detect [--n 10000] [--s 1] [--l 128] [--ratios 0.001,0.005,0.01,0.05,0.
 | 2026-11-05 | v0.4 | Windows 只做客户端，`pord` 不在 Windows 上构建（新增 CMake 选项 `SWPOR_BUILD_SERVER`） | |
 | 2026-11-10 | v0.5 | 明确 α_j 域分隔串 `SWPOR-ALPHA-V1`（3.3）、HKDF 参数（4.1）、种子挑战 l ≥ n 与 stream 读取规则（3.5.2）、CTR 的 IV 与置换算法细节（5）；新增 GET_SIGMAS/SIGMAS 消息（8.3）；定义 `tamper` 各模式语义（9.2）；T-25 固定创建时间；修正变更记录节号 | |
 | 2026-11-11 | v0.6 | 登记 v0.5 实现中补充的行为：`porctl delete`、`--tag-out`、`--timeout`；`--trace -` 写 stderr；新增 9.4.1 `porta`、9.4.2 `porbench` 命令行；Pub 方案不支持置乱 / 加密（5）；远程检索先下载到临时目录（6）；STORE 不覆盖已有文件、清理未完成上传、上传期间只允许 STORE_*（8.3）；Simple-MAC 基线定义（10.3） | |
+| 2026-11-11 | v0.7 | 2.1：CI 的 Windows 运行器固定为 `windows-2022`（`windows-latest` 不含 VS 2022） | |
