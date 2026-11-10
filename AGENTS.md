@@ -41,7 +41,7 @@
   - **OpenSSL 3.x**：只用 EVP 高层接口，不用已弃用的底层接口。
   - **ISA-L**：Reed–Solomon 纠删码。
   - **cmocka**：单元测试。Python 参考实现只用标准库。
-  - 除 blst 外，依赖由 vcpkg 清单模式（`vcpkg.json`）管理。**引入新依赖前先问用户。**
+  - 除 blst 外，依赖按平台获取（SPEC 2.1）：Linux 用 apt，macOS 用 Homebrew，Windows 用 vcpkg 清单模式（`vcpkg.json`）。新增依赖时三条路径都要更新。**引入新依赖前先问用户。**
 
 ## 目录与分层
 
