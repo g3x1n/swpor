@@ -347,7 +347,7 @@ static int cmd_store(int argc, char **argv)
     memset(&b, 0, sizeof(b));
     uint8_t tag[SWPOR_TAG_MAX_BYTES];
     size_t tag_len = 0;
-    swpor_tag_header_t h;
+    swpor_tag_header_t h = {0}; /* 显式初始化：MSVC C4701 无法证明只在 rc == OK 时读取 */
     char tag_path[PATH_CAP];
     const char *what = "store failed";
     rc = session_open(&o, &ss);
@@ -453,7 +453,7 @@ static int cmd_audit(int argc, char **argv)
     if (rc != SWPOR_OK) {
         return cli_fail(json, PROG " audit", "cannot read tag file", rc);
     }
-    swpor_tag_header_t h;
+    swpor_tag_header_t h = {0}; /* 显式初始化：MSVC C4701 无法证明只在 rc == OK 时读取 */
     rc = swpor_tag_header_decode(tag, tag_len, &h);
     if (rc != SWPOR_OK) {
         return cli_fail(json, PROG " audit", "invalid tag file", rc);
@@ -553,7 +553,7 @@ static int cmd_retrieve(int argc, char **argv)
     if (rc != SWPOR_OK) {
         return cli_fail(json, PROG " retrieve", "cannot read tag file", rc);
     }
-    swpor_tag_header_t h;
+    swpor_tag_header_t h = {0}; /* 显式初始化：MSVC C4701 无法证明只在 rc == OK 时读取 */
     rc = swpor_tag_header_decode(tag, tag_len, &h);
     if (rc != SWPOR_OK) {
         return cli_fail(json, PROG " retrieve", "invalid tag file", rc);
@@ -674,7 +674,7 @@ static int cmd_info(int argc, char **argv)
     if (rc != SWPOR_OK) {
         return cli_fail(json, PROG " info", "cannot read tag file", rc);
     }
-    swpor_tag_header_t h;
+    swpor_tag_header_t h = {0}; /* 显式初始化：MSVC C4701 无法证明只在 rc == OK 时读取 */
     rc = swpor_tag_header_decode(tag, tag_len, &h);
     if (rc != SWPOR_OK) {
         return cli_fail(json, PROG " info", "invalid tag file", rc);
@@ -878,7 +878,7 @@ static int cmd_delete(int argc, char **argv)
     }
     uint8_t tag[SWPOR_TAG_MAX_BYTES];
     size_t tag_len = 0;
-    swpor_tag_header_t h;
+    swpor_tag_header_t h = {0}; /* 显式初始化：MSVC C4701 无法证明只在 rc == OK 时读取 */
     int rc = read_tag_file(tagp, tag, &tag_len);
     if (rc == SWPOR_OK) {
         rc = swpor_tag_header_decode(tag, tag_len, &h);
