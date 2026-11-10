@@ -76,7 +76,7 @@ bench/           基准脚本与 CSV      docs/  third_party/  docker/  ui/（�
    ```
    cmake --preset debug && cmake --build --preset debug && ctest --preset debug
    ```
-   - 涉及 Priv 算法：再跑差分测试 `python3 tests/ref/run_diff.py build/debug/`（待实现）。
+   - 涉及 Priv 算法：再跑差分测试 `python3 tests/ref/run_diff.py build/debug/`。
    - 涉及 `src/platform/` 或 CMake：提醒用户 Windows 只能靠 CI 验证，推送后需确认 `windows-x64` 任务通过。
 4. **小步提交。** 一次提交只做一件事，格式 `<模块>: <做了什么>`，如 `priv: implement Priv.St tag generation (SPEC 4.1)`。不要在 `main` 上直接提交。
 5. **完成里程碑**（SPEC 1.3 的 M0～M5）后：更新 `README.md` 进度，列出通过的测试编号，提醒用户打 tag 并更新 `CHANGELOG.md`。

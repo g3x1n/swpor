@@ -14,7 +14,7 @@
 ## 2. 构建命令
 
 ```
-# 首次初始化：git init、拉取 blst 子模块、首次提交（待实现）
+# 首次初始化：git init、拉取 blst 子模块、首次提交
 ./scripts/bootstrap.sh
 
 # Debug（带 sanitizer）
@@ -26,8 +26,11 @@ cmake --preset release && cmake --build --preset release
 # 与 CI 一致的 vcpkg 构建
 cmake --preset vcpkg-debug && cmake --build --preset vcpkg-debug && ctest --preset vcpkg-debug
 
-# 依赖自检（待实现）
+# 依赖自检
 ./build/debug/apps/porctl doctor
+
+# 差分测试 T-03（ctest 中也会运行）
+python3 tests/ref/run_diff.py build/debug/
 ```
 
 CMake 选项：
@@ -62,7 +65,7 @@ CMake 选项：
 ### Linux
 
 - 编译器：GCC ≥ 11 或 Clang ≥ 14。
-- valgrind 检查、正式基准测试在 Linux 上进行。本地没有 Linux 时，用 `docker/Dockerfile.dev`（待实现）启动 Ubuntu 容器。
+- valgrind 检查、正式基准测试在 Linux 上进行。本地没有 Linux 时，用 `docker/Dockerfile.dev` 启动 Ubuntu 容器。
 
 ### Windows（Tier 2，仅客户端）
 

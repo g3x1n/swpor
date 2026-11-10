@@ -19,7 +19,7 @@
 ## 快速开始（macOS）
 
 ```bash
-brew install cmake ninja openssl@3 cmocka
+brew install cmake ninja openssl@3 cmocka isa-l
 ./scripts/bootstrap.sh            # 首次：git init + blst 子模块 + 首次提交
 cmake --preset debug
 cmake --build --preset debug
@@ -27,7 +27,7 @@ ctest --preset debug
 ./build/debug/apps/porctl doctor  # 确认 OpenSSL 与 blst 工作正常
 ```
 
-Linux（Ubuntu）：`sudo apt install build-essential cmake ninja-build libssl-dev libcmocka-dev`，其余步骤相同。
+Linux（Ubuntu）：`sudo apt install build-essential cmake ninja-build libssl-dev libcmocka-dev libisal-dev`，其余步骤相同。
 
 Windows：安装 Visual Studio 2022（含 C++ 桌面开发组件）和 [vcpkg](https://github.com/microsoft/vcpkg)，设置环境变量 `VCPKG_ROOT`，然后：
 
@@ -48,14 +48,41 @@ ctest --preset windows-debug
 
 基准测试请使用 `release` 预设。
 
+## 使用示例
+
+```bash
+B=build/debug/apps
+# 1. 密钥
+$B/porctl keygen --scheme priv --out keys          # keys/priv.key
+$B/porctl keygen --scheme pub  --out keys          # keys/pub.sk、keys/pub.pk
+
+# 2. 本地模式：存储 → 审计 → 篡改 → 再审计 → 恢复
+$B/porctl store    --key keys/priv.key --in report.pdf --local store/ --perm --encrypt --tag-out report.tag
+$B/porctl audit    --key keys/priv.key --tag report.tag --local store/          # PASS，退出码 0
+$B/porctl tamper   --local store/ --file-id <file_id> --mode zero --ratio 0.1
+$B/porctl audit    --key keys/priv.key --tag report.tag --local store/          # 多半 FAIL，退出码 1
+$B/porctl retrieve --key keys/priv.key --tag report.tag --local store/ --out report.out.pdf
+
+# 3. 远程模式 + 第三方审计（Pub 方案，审计者只需要公钥）
+$B/pord   --listen 0.0.0.0:7878 --data-dir /srv/swpor &
+$B/porctl store --key keys/pub.sk --in data.bin --server 127.0.0.1:7878 --tag-out data.tag
+$B/porta  --pk keys/pub.pk --tag data.tag --server 127.0.0.1:7878 --interval 3600 --count 0 --log audit.log
+```
+
+所有子命令都支持 `--json`；`--trace <file|->` 输出 NDJSON 执行轨迹（SPEC 9.4）。
+完整说明见 [`docs/reports/user-manual.md`](docs/reports/user-manual.md)。
+
 ## 进度
 
-| 里程碑 | 内容 | 状态 |
-|---|---|---|
-| 骨架 | 构建系统、目录结构、CI、依赖自检 | ✅ 完成 |
-| M0 | 底层封装（域运算、PRF、编码格式） | ⏳ |
-| M1 | Priv 方案核心库 | ⏳ |
-| M2 | `porctl` 本地模式 + 纠删码 + 文件恢复 | ⏳ |
-| M3 | 网络化（`pord`、远程模式） | ⏳ |
-| M4 | Pub 方案、`porta`、基准测试 | ⏳ |
-| M5 / M-UI | 选做 | ⏳ |
+| 里程碑 | 内容 | 状态 | 通过的测试 |
+|---|---|---|---|
+| 骨架 | 构建系统、目录结构、CI、依赖自检 | ✅ 完成 | — |
+| M0 | 底层封装（域运算、PRF、挑战、编码格式、平台层） | ✅ 完成 | T-01、T-02、T-03 |
+| M1 | Priv 方案核心库 | ✅ 完成 | T-04～T-08 |
+| M2 | `porctl` 本地模式 + 纠删码 + 文件恢复 | ✅ 完成 | T-09～T-14、T-26 |
+| M3 | 网络化（`pord`、远程模式） | ✅ 完成 | T-15～T-18 |
+| M4 | Pub 方案、`porta`、Simple-MAC 基线、`porbench` | ✅ 代码完成 | T-19～T-21；T-22～T-24 工具已就绪，正式数据待在 Linux Release 构建上测量 |
+| M5 / M-UI | 选做 | ⏳ | — |
+
+另外：T-25 的库层面部分（确定性输出的黄金摘要 `test_golden`）已实现，跨平台结论以 CI 三平台结果为准；
+SPEC 10.4 的三个 fuzz 目标已实现（ctest 中运行冒烟版本），正式的 1 小时 libFuzzer 运行尚未进行。
