@@ -56,3 +56,23 @@ endif()
 
 swpor_set_warnings(swpor)
 swpor_enable_sanitizers(swpor)
+
+# ---------------------------------------------------------------------------
+# swpor_net：网络协议、客户端与服务端（SPEC 8）。libswpor 本身不含网络代码（SPEC 9.1）。
+# ---------------------------------------------------------------------------
+add_library(swpor_net STATIC
+    net/client.c
+    net/frame.c
+    net/remote.c
+    net/server.c
+    platform/sock_posix.c
+    platform/sock_win32.c
+)
+add_library(swpor::net ALIAS swpor_net)
+target_include_directories(swpor_net PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/platform")
+target_link_libraries(swpor_net PUBLIC swpor::swpor)
+swpor_set_warnings(swpor_net)
+swpor_enable_sanitizers(swpor_net)

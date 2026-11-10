@@ -26,7 +26,7 @@ typedef struct {
     uint8_t *deleted; /* 测试：被删除的块，get 时返回 SWPOR_E_IO */
 } mem_backend_t;
 
-static int mem_begin(void *user, const uint8_t *tag, size_t tag_len, const swpor_tag_header_t *hdr)
+static inline int mem_begin(void *user, const uint8_t *tag, size_t tag_len, const swpor_tag_header_t *hdr)
 {
     mem_backend_t *m = user;
     memcpy(m->tag, tag, tag_len);
@@ -42,7 +42,7 @@ static int mem_begin(void *user, const uint8_t *tag, size_t tag_len, const swpor
     return (m->blocks && m->sigmas && m->written && m->deleted) ? SWPOR_OK : SWPOR_E_NOMEM;
 }
 
-static int mem_put(void *user, uint64_t pos, const uint8_t *block, size_t bl, const uint8_t *sigma,
+static inline int mem_put(void *user, uint64_t pos, const uint8_t *block, size_t bl, const uint8_t *sigma,
                    size_t sl)
 {
     mem_backend_t *m = user;
@@ -55,7 +55,7 @@ static int mem_put(void *user, uint64_t pos, const uint8_t *block, size_t bl, co
     return SWPOR_OK;
 }
 
-static int mem_finish(void *user)
+static inline int mem_finish(void *user)
 {
     mem_backend_t *m = user;
     for (uint64_t i = 0; i < m->n; i++) {
@@ -69,7 +69,7 @@ static int mem_finish(void *user)
 
 static const swpor_st_sink_t k_mem_sink = {mem_begin, mem_put, mem_finish};
 
-static int mem_get(void *user, uint64_t pos, uint8_t *block, size_t bl, uint8_t *sigma, size_t sl)
+static inline int mem_get(void *user, uint64_t pos, uint8_t *block, size_t bl, uint8_t *sigma, size_t sl)
 {
     mem_backend_t *m = user;
     if (pos >= m->n || bl != m->bb || sl != m->sb) {
@@ -83,18 +83,18 @@ static int mem_get(void *user, uint64_t pos, uint8_t *block, size_t bl, uint8_t 
     return SWPOR_OK;
 }
 
-static int mem_reader(void *user, uint64_t i, uint8_t *block, size_t bl, uint8_t *sigma, size_t sl)
+static inline int mem_reader(void *user, uint64_t i, uint8_t *block, size_t bl, uint8_t *sigma, size_t sl)
 {
     return mem_get(user, i, block, bl, sigma, sl);
 }
 
-static int mem_prove(void *user, const swpor_chal_t *chal, uint8_t *proof, size_t cap, size_t *len)
+static inline int mem_prove(void *user, const swpor_chal_t *chal, uint8_t *proof, size_t cap, size_t *len)
 {
     mem_backend_t *m = user;
     return swpor_prove(NULL, &m->hdr, chal, mem_reader, m, proof, cap, len);
 }
 
-static void mem_backend_free(mem_backend_t *m)
+static inline void mem_backend_free(mem_backend_t *m)
 {
     free(m->blocks);
     free(m->sigmas);
@@ -110,7 +110,7 @@ typedef struct {
     size_t pos;
 } mem_input_t;
 
-static int mem_input(void *user, uint8_t *buf, size_t len, size_t *got)
+static inline int mem_input(void *user, uint8_t *buf, size_t len, size_t *got)
 {
     mem_input_t *in = user;
     size_t take = in->len - in->pos;
@@ -130,7 +130,7 @@ typedef struct {
     size_t cap;
 } mem_output_t;
 
-static int mem_output(void *user, const uint8_t *buf, size_t len)
+static inline int mem_output(void *user, const uint8_t *buf, size_t len)
 {
     mem_output_t *o = user;
     if (o->len + len > o->cap) {

@@ -40,7 +40,7 @@ typedef struct {
     uint16_t rs_m;
 } swpor_st_params_t;
 
-typedef struct {
+typedef struct swpor_st_sink_s {
     /** 开始上传：文件标签已生成（t 在块之前就已确定，SPEC 8.3 STORE_BEGIN）。 */
     int (*begin)(void *user, const uint8_t *tag, size_t tag_len, const swpor_tag_header_t *hdr);
     /** 写入 M′ 位置 pos 的块及其 σ（可能乱序）。 */

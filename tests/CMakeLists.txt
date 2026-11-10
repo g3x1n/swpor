@@ -52,3 +52,9 @@ swpor_add_test(test_core unit/test_core.c)
 swpor_add_test(test_priv unit/test_priv.c)
 swpor_add_test(test_ec unit/test_ec.c)
 swpor_add_test(test_pub unit/test_pub.c)
+
+# 网络测试（T-15～T-18）需要服务端，Windows 上不构建 pord 相关功能
+if(SWPOR_BUILD_SERVER)
+    swpor_add_test(test_net unit/test_net.c)
+    target_link_libraries(test_net PRIVATE swpor::net)
+endif()
