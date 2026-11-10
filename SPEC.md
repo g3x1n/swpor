@@ -577,5 +577,5 @@ porbench detect [--n 10000] [--s 1] [--l 128] [--ratios 0.001,0.005,0.01,0.05,0.
 | 2026-11-05 | v0.2 | 确定 CMake 与线程池（关闭 OPEN-2、OPEN-5）；新增 2.1 平台要求、8.4 并发模型、9.4 trace 事件流、9.5 可视化界面与 M-UI 里程碑；新增 OPEN-6 | |
 | 2026-11-05 | v0.3 | 新增 Windows 支持（Tier 2）；2.1 节改为三级平台支持、vcpkg、平台抽象层与发布流程；新增 T-25、T-26 | |
 | 2026-11-05 | v0.4 | Windows 只做客户端，`pord` 不在 Windows 上构建（新增 CMake 选项 `SWPOR_BUILD_SERVER`） | |
-| 2026-11-11 | v0.6 | 登记 v0.5 实现中补充的行为：`porctl delete`、`--tag-out`、`--timeout`；`--trace -` 写 stderr；新增 9.4.1 `porta`、9.4.2 `porbench` 命令行；Pub 方案不支持置乱 / 加密（5）；远程检索先下载到临时目录（6）；STORE 不覆盖已有文件、清理未完成上传、上传期间只允许 STORE_*（8.3）；Simple-MAC 基线定义（10.3） | |
 | 2026-11-10 | v0.5 | 明确 α_j 域分隔串 `SWPOR-ALPHA-V1`（3.3）、HKDF 参数（4.1）、种子挑战 l ≥ n 与 stream 读取规则（3.5.2）、CTR 的 IV 与置换算法细节（5）；新增 GET_SIGMAS/SIGMAS 消息（8.3）；定义 `tamper` 各模式语义（9.2）；T-25 固定创建时间；修正变更记录节号 | |
+| 2026-11-11 | v0.6 | 登记 v0.5 实现中补充的行为：`porctl delete`、`--tag-out`、`--timeout`；`--trace -` 写 stderr；新增 9.4.1 `porta`、9.4.2 `porbench` 命令行；Pub 方案不支持置乱 / 加密（5）；远程检索先下载到临时目录（6）；STORE 不覆盖已有文件、清理未完成上传、上传期间只允许 STORE_*（8.3）；Simple-MAC 基线定义（10.3） | |
