@@ -1,0 +1,17 @@
+# Linux 开发与基准测试环境（valgrind、正式性能数据，见 CLAUDE.md）。
+#
+#   docker build -t swpor-dev -f docker/Dockerfile.dev .
+#   docker run --rm -it -v "$PWD":/src -w /src swpor-dev
+#
+# 注意：在 Apple Silicon 上默认构建 arm64 镜像；正式基准测试请在 x86_64 Linux 服务器上运行。
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential clang llvm lld \
+        cmake ninja-build pkg-config git ca-certificates \
+        libssl-dev libcmocka-dev libisal-dev \
+        valgrind gdb python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src

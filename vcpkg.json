@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "swpor",
+  "version-semver": "0.0.1",
+  "description": "Shacham-Waters Compact Proofs of Retrievability: data audit system",
+  "dependencies": [
+    "openssl",
+    "cmocka"
+  ]
+}

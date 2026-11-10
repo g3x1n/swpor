@@ -1,0 +1,72 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "vcpkg-base",
+      "hidden": true,
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug（系统依赖：Homebrew / apt）",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release",
+      "displayName": "Release（系统依赖：Homebrew / apt）",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "SWPOR_SANITIZE": "OFF" }
+    },
+    {
+      "name": "vcpkg-debug",
+      "displayName": "Debug（vcpkg 依赖）",
+      "inherits": [ "base", "vcpkg-base" ],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "vcpkg-release",
+      "displayName": "Release（vcpkg 依赖）",
+      "inherits": [ "base", "vcpkg-base" ],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "SWPOR_SANITIZE": "OFF" }
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug（MSVC + vcpkg）",
+      "inherits": "vcpkg-base",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "SWPOR_SANITIZE": "OFF" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release（MSVC + vcpkg）",
+      "inherits": "windows-debug"
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug",           "configurePreset": "debug" },
+    { "name": "release",         "configurePreset": "release" },
+    { "name": "vcpkg-debug",     "configurePreset": "vcpkg-debug" },
+    { "name": "vcpkg-release",   "configurePreset": "vcpkg-release" },
+    { "name": "windows-debug",   "configurePreset": "windows-debug",   "configuration": "Debug" },
+    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release" }
+  ],
+  "testPresets": [
+    { "name": "debug",           "configurePreset": "debug",           "output": { "outputOnFailure": true } },
+    { "name": "release",         "configurePreset": "release",         "output": { "outputOnFailure": true } },
+    { "name": "vcpkg-debug",     "configurePreset": "vcpkg-debug",     "output": { "outputOnFailure": true } },
+    { "name": "vcpkg-release",   "configurePreset": "vcpkg-release",   "output": { "outputOnFailure": true } },
+    { "name": "windows-debug",   "configurePreset": "windows-debug",   "configuration": "Debug",   "output": { "outputOnFailure": true } },
+    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release", "output": { "outputOnFailure": true } }
+  ]
+}
