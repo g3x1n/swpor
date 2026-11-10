@@ -52,6 +52,15 @@ def check(cond, msg):
         FAILURES.append(msg)
 
 
+def check_file_equals(path, data, msg):
+    """检查输出文件存在且内容等于 data；不存在时记为失败而不是抛异常，以便报告所有失败项"""
+    if not os.path.exists(path):
+        FAILURES.append(f"{msg}: output file {path!r} was not created")
+        return
+    with open(path, "rb") as f:
+        check(f.read() == data, msg)
+
+
 def free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -114,8 +123,8 @@ def main():
         r = run_json([porctl, "retrieve", "--key", "k/priv.key", "--tag", "p.tag", "--local",
                       "存储 目录", "--out", "恢复 结果.bin"], work, 0)
         check(r.get("result") == "OK", f"retrieve json: {r}")
-        with open(os.path.join(work, "恢复 结果.bin"), "rb") as f:
-            check(f.read() == data, "retrieved file differs (T-10/T-26)")
+        check_file_equals(os.path.join(work, "恢复 结果.bin"), data,
+                          "retrieved file differs (T-10/T-26)")
 
         # 错误的密钥：标签认证失败 → 退出码 5
         run([porctl, "keygen", "--scheme", "priv", "--out", "k2"], work, 0)
@@ -169,8 +178,8 @@ def main():
                      "--seed-mode"], work, 0)
                 r = run_json([porctl, "retrieve", "--key", "k/pub.pk", "--tag", "r.tag",
                               "--server", addr, "--out", "remote.bin"], work, 0)
-                with open(os.path.join(work, "remote.bin"), "rb") as f:
-                    check(f.read() == data, "remote retrieve differs")
+                check_file_equals(os.path.join(work, "remote.bin"), data,
+                                  "remote retrieve differs")
                 run([porctl, "delete", "--tag", "r.tag", "--server", addr], work, 0)
                 run([porctl, "audit", "--key", "k/pub.pk", "--tag", "r.tag", "--server", addr],
                     work, 3)
