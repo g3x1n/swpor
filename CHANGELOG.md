@@ -4,8 +4,19 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-11
+
+完成里程碑 M-UI（SPEC v0.9）。核心库、文件格式与网络协议与 0.4.0 相同。
+
 ### 新增
 - 本机 Web 控制台（M-UI，SPEC 9.5，v0.9）：`ui/server.py`（Python 标准库）+ `ui/web/`（HTML、CSS、原生 JS），按三方角色完成存储、审计、篡改实验、恢复，并展示执行轨迹；测试 T-27。
+
+### 变更
+- SPEC 9.5 改为本机 Web 控制台，去掉教学模式；桌面封装延期（OPEN-6 保留）。
+
+### 已知限制
+- 0.4.0 的已知限制仍然存在：Pub 不支持 `--perm` / `--encrypt`，网络为明文 TCP（TLS 计划在 M5），T-22～T-24 正式性能数据与 1 小时 libFuzzer 运行尚未进行。
+- Web 控制台只监听 127.0.0.1，供本机单用户使用；Windows 上不能启动托管的 `pord`。
 
 ## [0.4.0] - 2026-11-11
 
@@ -35,5 +46,6 @@
 - 网络协议为明文 TCP，TLS 计划在 M5 实现。
 - T-22～T-24 的正式性能数据尚未测量（需在 Linux x86_64 Release 构建上运行 `porbench`）；SPEC 10.4 要求的 1 小时 libFuzzer 运行尚未进行。
 
-[Unreleased]: https://github.com/g3x1n/swpor/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/g3x1n/swpor/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/g3x1n/swpor/releases/tag/v0.5.0
 [0.4.0]: https://github.com/g3x1n/swpor/releases/tag/v0.4.0
