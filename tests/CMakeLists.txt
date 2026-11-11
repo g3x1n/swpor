@@ -17,6 +17,9 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME T14_T21_cli_integration
              COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli.py"
                      "${PROJECT_BINARY_DIR}")
+    add_test(NAME T27_web_console
+             COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_ui.py"
+                     "${PROJECT_BINARY_DIR}")
 endif()
 
 # ---- 模糊测试目标（SPEC 10.4）：冒烟版本总是构建；SWPOR_FUZZ=ON 时另外构建 libFuzzer 版本 ----
