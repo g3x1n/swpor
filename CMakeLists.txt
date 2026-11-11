@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(swpor
-    VERSION 0.0.1
+    VERSION 0.4.0
     DESCRIPTION "Shacham-Waters Compact Proofs of Retrievability: data audit system"
     LANGUAGES C)
 
