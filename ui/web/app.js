@@ -502,8 +502,8 @@ function timeline(d) {
     lastTag = null;
   };
   for (const e of d.events) {
-    if (e.type !== "ec_stripe") flushStripes();
-    if (e.type !== "tag_block" && e.type !== "ec_stripe") flushTag();
+    // 流式预处理时 ec_stripe 与 tag_block 交替出现，合并为"纠删码编码"和"打标签"两项
+    if (e.type !== "tag_block" && e.type !== "ec_stripe") { flushStripes(); flushTag(); }
     switch (e.type) {
       case "file_split":
         n = e.n;
@@ -565,7 +565,8 @@ function resultView(d) {
       const t = h("table", { class: "tbl" }, h("tr", {}, ["时间", "文件", "结果", "l", "耗时"].map((x) => h("th", {}, x))));
       for (const r of d.outputs) {
         const tag = tagByFid(r.file_id);
-        t.append(h("tr", {}, h("td", {}, (r.time || "").replace("T", " ").replace("Z", "")),
+        const ts = Date.parse(r.time);
+        t.append(h("tr", {}, h("td", { class: "num" }, isNaN(ts) ? r.time || "—" : fmtTime(ts / 1000)),
           h("td", {}, tag ? tag.name : shortId(r.file_id)),
           h("td", {}, h("span", { class: "badge " + (r.result === "PASS" ? "pass" : "fail") }, r.result)),
           h("td", { class: "num" }, r.l), h("td", { class: "num" }, fmtMs(r.elapsed_ms))));
@@ -999,10 +1000,19 @@ function viewTamper() {
         class: "btn", disabled: !tag || !defaultKeyFor(tag, ["priv", "pub_sk", "pub_pk"]),
         onclick: () => runJob("/api/retrieve", { key: defaultKeyFor(tag, ["priv", "pub_sk", "pub_pk"]), tag: tag.path, target: "local" }),
       }, "尝试恢复")),
-    h("p", { class: "hint" }, "检测概率：随机篡改比例为 ρ 时，l 个挑战块全部避开被篡改块的概率约为 (1 − ρ)ˡ，审计 FAIL 的概率约为 1 − (1 − ρ)ˡ（SPEC 10.2）。"),
-    tag ? h("p", { class: "hint" }, `当前参数下理论检测概率约 ${((1 - Math.pow(1 - ratio, intOf("tp-l", "128") || 128)) * 100).toFixed(2)}%（l 不超过 n = ${tag.info.n} 时）。`) : null);
+    h("p", { class: "hint" }, "理论检测率（SPEC 9.4.2）：n 块中有 d 块被篡改、挑战 l 个不同的块时，审计 FAIL 的概率为 1 − C(n−d, l) / C(n, l)。"),
+    tag ? h("p", { class: "hint" }, detectHint(tag.info.n, ratio, intOf("tp-l", "128") || 128)) : null);
   return [pageHead("篡改实验", "模拟服务端丢失或损坏数据：篡改后再审计应得到 FAIL；在纠删码容错范围内仍可恢复原文件。"),
     form, tag ? blockMap(tag) : null];
+}
+
+/** 理论检测率 1 − C(n−d, l)/C(n, l) = 1 − Π_{i<l} (n−d−i)/(n−i)，d = round(ρ·n)，l 取 min(l, n) */
+function detectHint(n, ratio, l) {
+  const d = Math.round(ratio * n);
+  const ll = Math.min(l, n);
+  let miss = 1;
+  for (let i = 0; i < ll && miss > 0; i++) miss *= Math.max(0, n - d - i) / (n - i);
+  return `当前参数：n = ${n}，d = ${d}，l = ${ll}，理论检测率 ${((1 - miss) * 100).toFixed(2)}%。`;
 }
 
 /** 块状态图：标出最近一次篡改和最近一次审计挑战的块（trace 事件只列出前 64 个下标） */
