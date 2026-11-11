@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>swpor 审计控制台</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <!-- swpor 本机 Web 控制台前端（SPEC 9.5）：页面内容全部由 app.js 生成 -->
+  <header class="topbar">
+    <div class="brand">
+      <img src="icon.svg" alt="" class="brand-mark">
+      <div>
+        <div class="brand-name">swpor 审计控制台</div>
+        <div class="brand-sub">Shacham–Waters 紧凑可恢复性证明 · 三方数据审计</div>
+      </div>
+    </div>
+    <div class="topbar-status" id="topbar-status"></div>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" id="nav"></nav>
+    <main class="main" id="main"></main>
+    <aside class="jobs" id="jobs"></aside>
+  </div>
+  <div class="toast-host" id="toasts"></div>
+</body>
+</html>
