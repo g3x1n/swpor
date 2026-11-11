@@ -261,6 +261,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .tbl tr:last-child td { border-bottom: 0; }
 .tbl td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl td.nowrap { white-space: nowrap; }
+.tbl td.ellip { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tbl .row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .table-wrap { overflow-x: auto; }
 

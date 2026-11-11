@@ -674,8 +674,8 @@ function auditTable(recs) {
   for (const r of recs) {
     t.append(h("tr", { onclick: () => { S.selected = r.job; renderJobs(); refreshJobs(); } },
       h("td", { class: "num" }, fmtTime(r.time)),
-      h("td", { title: r.fid || "" }, r.tag),
-      h("td", { class: "muted" }, r.by),
+      h("td", { class: "ellip", title: `${r.tag}\n${r.fid || ""}` }, r.tag),
+      h("td", { class: "muted nowrap" }, r.by),
       h("td", { class: "num" }, r.l ? `${r.challenge === "seed" ? "种子" : "显式"} l=${r.l}` : "—"),
       h("td", {}, h("span", { class: "badge " + (r.result === "PASS" ? "pass" : r.result === "FAIL" ? "fail" : "warn"), title: r.error || "" }, r.result || "ERROR")),
       h("td", { class: "num" }, fmtMs(r.elapsed)),
