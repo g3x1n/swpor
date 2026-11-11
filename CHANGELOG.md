@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### 新增
+- 本机 Web 控制台（M-UI，SPEC 9.5，v0.9）：`ui/server.py`（Python 标准库）+ `ui/web/`（HTML、CSS、原生 JS），按三方角色完成存储、审计、篡改实验、恢复，并展示执行轨迹；测试 T-27。
+
 ## [0.4.0] - 2026-11-11
 
 首个发布版本，完成 SPEC 1.3 的里程碑 M0～M4（SPEC v0.8）。

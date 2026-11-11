@@ -69,6 +69,15 @@ $B/porctl store --key keys/pub.sk --in data.bin --server 127.0.0.1:7878 --tag-ou
 $B/porta  --pk keys/pub.pk --tag data.tag --server 127.0.0.1:7878 --interval 3600 --count 0 --log audit.log
 ```
 
+### Web 控制台（M-UI）
+
+```bash
+python3 ui/server.py --bin build/debug/apps --workspace ~/swpor-ws --open
+```
+
+在浏览器中按数据所有者、存储服务端、第三方审计者三方角色完成存储、审计、篡改实验、恢复，
+并查看每个任务的执行轨迹。只监听 127.0.0.1，需要启动时打印的带令牌地址（SPEC 9.5，用户手册第 8 节）。
+
 所有子命令都支持 `--json`；`--trace <file|->` 输出 NDJSON 执行轨迹（SPEC 9.4）。
 完整说明见 [`docs/reports/user-manual.md`](docs/reports/user-manual.md)。
 
@@ -82,7 +91,8 @@ $B/porta  --pk keys/pub.pk --tag data.tag --server 127.0.0.1:7878 --interval 360
 | M2 | `porctl` 本地模式 + 纠删码 + 文件恢复 | ✅ 完成 | T-09～T-14、T-26 |
 | M3 | 网络化（`pord`、远程模式） | ✅ 完成 | T-15～T-18 |
 | M4 | Pub 方案、`porta`、Simple-MAC 基线、`porbench` | ✅ 代码完成 | T-19～T-21；T-22～T-24 工具已就绪，正式数据待在 Linux Release 构建上测量 |
-| M5 / M-UI | 选做 | ⏳ | — |
+| M-UI | 本机 Web 控制台（`ui/`） | ✅ 完成 | T-27 |
+| M5 | 选做（RSA 变体、TLS、提取器演示） | ⏳ | — |
 
 另外：T-25 的库层面部分（确定性输出的黄金摘要 `test_golden`）已实现，跨平台结论以 CI 三平台结果为准；
 SPEC 10.4 的三个 fuzz 目标已实现（ctest 中运行冒烟版本），正式的 1 小时 libFuzzer 运行尚未进行。

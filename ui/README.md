@@ -1,8 +1,6 @@
-# ui — 算法可视化界面（M-UI，选做）
+# ui — 本机 Web 控制台（M-UI，选做）
 
-Web 前端（HTML + TypeScript），两种模式（SPEC 9.5）：
+见 SPEC 9.5。后端 `server.py` 只用 Python 标准库，前端 `web/` 为 HTML、CSS、原生 JavaScript，无需构建。
+后端以子进程调用 `porctl` / `porta` / `pord`，不链接 `libswpor`。
 
-1. 教学模式：玩具参数下用 JS BigInt 演示 Priv 方案全过程，界面必须标注"玩具参数，不安全"。
-2. 实况模式：读取 `porctl --trace` 输出的 NDJSON 事件（SPEC 9.4）。
-
-桌面封装框架待定（SPEC OPEN-6）。
+桌面封装暂不做（SPEC OPEN-6）。
