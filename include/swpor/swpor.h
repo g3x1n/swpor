@@ -6,15 +6,28 @@
  * 算法与格式定义见仓库根目录的 SPEC.md。
  */
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "swpor/ctx.h"
+#include "swpor/encode.h"
 #include "swpor/error.h"
+#include "swpor/keyfile.h"
 #include "swpor/params.h"
+#include "swpor/pipeline.h"
+#include "swpor/por.h"
+#include "swpor/priv.h"
+#include "swpor/pub.h"
+#include "swpor/store.h"
 #include "swpor/trace.h"
 #include "swpor/version.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/** 安全随机数（OpenSSL RAND_bytes，SPEC 11 第 4 条）。 */
+int swpor_random_bytes(uint8_t *buf, size_t len);
 
 /** 返回库版本字符串，如 "0.0.1"。 */
 const char *swpor_version(void);

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Windows 应用清单：把进程的活动代码页设为 UTF-8（Windows 10 1903 及以上）。
+  这样 main() 的 argv、fopen 等 ANSI 接口都使用 UTF-8，与 src/platform/ 中"路径一律为 UTF-8"的约定一致（SPEC 2.1、T-26）。
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

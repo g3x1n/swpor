@@ -18,6 +18,7 @@ option(SWPOR_BUILD_SERVER "Build the storage server (pord)" ${_swpor_server_defa
 option(SWPOR_BUILD_TESTS  "Build unit tests"                ON)
 option(SWPOR_WERROR       "Treat warnings as errors"        ON)
 option(SWPOR_SANITIZE     "Enable ASan/UBSan in Debug builds" ON)
+option(SWPOR_FUZZ        "Build libFuzzer targets (requires clang with -fsanitize=fuzzer)" OFF)
 option(SWPOR_TESTING      "Compile deterministic RNG hooks for tests (never in releases)" OFF)
 
 set(CMAKE_C_STANDARD 11)
@@ -32,6 +33,7 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(SwporWarnings)
 include(SwporSanitizers)
+include(SwporUtf8)
 
 # ---------------------------------------------------------------------------
 # 依赖
@@ -61,10 +63,22 @@ include(Blst)   # 定义 swpor::blst（third_party/blst 子模块）
 # ---------------------------------------------------------------------------
 # 版本头文件
 # ---------------------------------------------------------------------------
+string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
+set(SWPOR_COMPILER_INFO "${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}")
+set(SWPOR_BUILD_TYPE_INFO "${CMAKE_BUILD_TYPE}")
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/include/swpor/version.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/swpor/version.h"
     @ONLY)
+
+# 构建信息（git commit，供 porbench 记录，SPEC 10.3）：每次构建时刷新
+add_custom_target(swpor_buildinfo
+    COMMAND ${CMAKE_COMMAND} -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/generated/swpor/buildinfo.h
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildInfo.cmake
+    BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/generated/swpor/buildinfo.h
+    COMMENT "Refreshing build info")
+set(SWPOR_C_FLAGS_INFO "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
 
 # ---------------------------------------------------------------------------
 # 子目录

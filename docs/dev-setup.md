@@ -6,15 +6,22 @@
 
 ## 1. 依赖管理
 
-- **主路径：vcpkg 清单模式**（`vcpkg.json`），三个平台一致，CI 也使用这条路径。需要设置环境变量 `VCPKG_ROOT`。
-- **blst** 作为 git submodule 放在 `third_party/blst`，不经过 vcpkg。
-- **备选（仅 macOS 本地临时使用）**：Homebrew 安装 `openssl@3 isa-l cmocka`，配置时传入
-  `-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)`。正式构建和发布以 vcpkg 为准。
+依赖按平台分别获取（SPEC 2.1），CI 与本地开发使用同一条路径：
+
+| 平台 | 安装依赖 | 预设 |
+|---|---|---|
+| Linux | `sudo apt install build-essential cmake ninja-build libssl-dev libcmocka-dev libisal-dev` | `debug` / `release` |
+| macOS | `brew install cmake ninja openssl@3 cmocka isa-l`（CMake 会自动找到 keg-only 的 OpenSSL） | `debug` / `release` |
+| Windows | Visual Studio 2022 + vcpkg，设置 `VCPKG_ROOT`，依赖由 `vcpkg.json` 自动安装 | `windows-debug` / `windows-release` |
+
+- **blst** 作为 git submodule 放在 `third_party/blst`，不经过任何包管理器。
+- `vcpkg-debug` / `vcpkg-release` 预设仍可在 Linux / macOS 上使用，但 vcpkg 的 `isal` 端口不支持 arm64 macOS，
+  在 Mac 上需另用 Homebrew 安装 `isa-l`。
 
 ## 2. 构建命令
 
 ```
-# 首次初始化：git init、拉取 blst 子模块、首次提交（待实现）
+# 首次初始化：git init、拉取 blst 子模块、首次提交
 ./scripts/bootstrap.sh
 
 # Debug（带 sanitizer）
@@ -23,11 +30,14 @@ cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 # Release（基准测试用）
 cmake --preset release && cmake --build --preset release
 
-# 与 CI 一致的 vcpkg 构建
+# 可选：用 vcpkg 获取依赖（Windows 的主路径；Linux / macOS 上可选）
 cmake --preset vcpkg-debug && cmake --build --preset vcpkg-debug && ctest --preset vcpkg-debug
 
-# 依赖自检（待实现）
+# 依赖自检
 ./build/debug/apps/porctl doctor
+
+# 差分测试 T-03（ctest 中也会运行）
+python3 tests/ref/run_diff.py build/debug/
 ```
 
 CMake 选项：
@@ -62,7 +72,7 @@ CMake 选项：
 ### Linux
 
 - 编译器：GCC ≥ 11 或 Clang ≥ 14。
-- valgrind 检查、正式基准测试在 Linux 上进行。本地没有 Linux 时，用 `docker/Dockerfile.dev`（待实现）启动 Ubuntu 容器。
+- valgrind 检查、正式基准测试在 Linux 上进行。本地没有 Linux 时，用 `docker/Dockerfile.dev` 启动 Ubuntu 容器。
 
 ### Windows（Tier 2，仅客户端）
 

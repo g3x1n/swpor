@@ -5,6 +5,10 @@
   "description": "Shacham-Waters Compact Proofs of Retrievability: data audit system",
   "dependencies": [
     "openssl",
+    {
+      "name": "isal",
+      "platform": "!(osx & arm64)"
+    },
     "cmocka"
   ]
 }
