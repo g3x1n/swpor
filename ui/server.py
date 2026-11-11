@@ -24,6 +24,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -944,6 +945,12 @@ def main():
     print(f"swpor console listening: {url}", flush=True)
     if args.open:
         webbrowser.open(url)
+
+    # SIGTERM 也走正常退出流程，确保停止本机 pord 与运行中的任务
+    def on_term(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, on_term)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
