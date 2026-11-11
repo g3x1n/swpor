@@ -4,18 +4,33 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-11
+
+首个发布版本，完成 SPEC 1.3 的里程碑 M0～M4（SPEC v0.8）。
+
 ### 新增
 - 核心库：Z_r 域封装（blst）、PRF / HKDF / HMAC 字节流、显式与种子挑战、文件标签明文头（SPEC 3、4.3）。
 - Priv 方案（SPEC 4.1）：打标签、AES-256-GCM 文件标签、证明与验证；Python 参考实现与差分测试（T-03）。
 - Pub 方案（SPEC 4.2）：BLS12-381 非对称配对、Pippenger MSM、Ed25519 文件标签、单块校验。
 - 纠删码层（SPEC 5）：ISA-L 条带 RS、秘密置换、AES-256-CTR 文件加密、按擦除恢复。
 - 磁盘格式与密钥文件（SPEC 6、7）。
-- 网络协议（SPEC 8）：帧格式、客户端、固定线程池服务端（有界队列、每文件读写锁、超时）。
-- `porctl`：keygen / store / audit / retrieve / info / tamper / delete，本地与远程模式，`--json`、`--trace`。
+- 网络协议（SPEC 8）：帧格式、客户端、固定线程池服务端（有界队列、BUSY、每文件读写锁、读写超时）。
+- `porctl`：keygen / store / audit / retrieve / info / tamper / delete / doctor / version，本地与远程模式，`--json`、`--trace`。
 - `pord` 存储服务端、`porta` 第三方审计者、`porbench` 基准与篡改检测实验（含 Simple-MAC 基线）。
-- 测试：T-01～T-21、T-25（库层面）、T-26；三个 fuzz 目标的冒烟测试；CLI 集成测试。
-- 项目骨架：CMake 构建系统与预设、vcpkg 清单、三平台 CI。
-- `libswpor`：错误码、上下文与 trace 事件分发、依赖自检 `swpor_selftest`。
-- 平台抽象层：进程初始化、高精度计时（POSIX / Win32）。
-- `porctl`：`version`、`doctor`、`help` 子命令；其余子命令为占位。
-- `pord`、`porta`、`porbench`：占位程序。
+- 平台抽象层：文件、目录、线程与锁、套接字（POSIX / Win32），CPU 与内存信息。
+- 测试：T-01～T-21、T-25（确定性输出黄金摘要，三平台一致）、T-26（非 ASCII 路径）；三个 fuzz 目标的冒烟测试；CLI 集成测试（T-14、T-21）。
+- 文档：用户手册（`docs/reports/user-manual.md`）、基准结果汇总脚本（`bench/summarize.py`）。
+
+### 变更
+- 依赖按平台获取（SPEC 2.1，v0.8）：Linux 用 apt，macOS 用 Homebrew，Windows 用 vcpkg；vcpkg 的 `isal` 在 arm64 macOS 上不可用。
+- CI 的 Windows 运行器固定为 `windows-2022`（SPEC 2.1，v0.7）。
+- Windows 可执行文件嵌入 UTF-8 活动代码页清单，命令行参数中的中文路径可正常使用。
+- MSVC 上 blst 改用 MASM 汇编构建（blst 的纯 C 路径依赖 VLA，MSVC 不支持）。
+
+### 已知限制
+- Pub 方案不支持 `--perm` / `--encrypt`（SPEC 5）。
+- 网络协议为明文 TCP，TLS 计划在 M5 实现。
+- T-22～T-24 的正式性能数据尚未测量（需在 Linux x86_64 Release 构建上运行 `porbench`）；SPEC 10.4 要求的 1 小时 libFuzzer 运行尚未进行。
+
+[Unreleased]: https://github.com/g3x1n/swpor/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/g3x1n/swpor/releases/tag/v0.4.0
