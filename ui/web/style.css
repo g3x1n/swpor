@@ -131,10 +131,15 @@ button, input, select { font: inherit; color: inherit; }
   min-height: 0;
 }
 
+/* 窄屏：整页滚动，任务面板移到主区域下方 */
 @media (max-width: 1180px) {
+  html, body { height: auto; }
   .layout { grid-template-columns: 172px minmax(0, 1fr); }
+  .sidebar { align-self: start; position: sticky; top: 0; }
+  .main { overflow: visible; }
   .jobs { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
-  .layout { grid-template-rows: auto auto; }
+  .job-list { max-height: 280px; }
+  .job-detail { overflow: visible; }
 }
 @media (max-width: 760px) {
   .layout { display: block; }
@@ -366,7 +371,7 @@ pre.log {
 
 /* ---------------- 块网格（篡改实验） ---------------- */
 
-.blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(11px, 1fr)); gap: 2px; }
+.blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(14px, 1fr)); gap: 3px; }
 .blk { aspect-ratio: 1; border-radius: 2px; background: var(--border); }
 .blk.parity { background: var(--border-strong); }
 .blk.tampered { background: var(--fail); }
