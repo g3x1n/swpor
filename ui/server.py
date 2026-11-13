@@ -17,8 +17,10 @@ porctl 另加 --trace -，把程序的实际输出转发给浏览器；不链接
 """
 
 import argparse
+from contextlib import nullcontext
 import hmac
 import http.server
+import ipaddress
 import json
 import os
 import re
@@ -66,6 +68,8 @@ STATIC_TYPES = {
 # 文件名：允许中文和空格（T-26）；拒绝路径分隔符、控制字符与 Windows 不允许的字符
 _BAD_NAME = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
 _ADDR = re.compile(r"^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.\-]{1,253}):([0-9]{1,5})$")
+_HOST = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9.\-]{0,251}[A-Za-z0-9.])?")
+_SSH_USER = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.\-]{0,63}")
 _RS = re.compile(r"^([0-9]{1,3}):([0-9]{1,3})$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -92,11 +96,66 @@ def find_exe(bindir, name):
 
 
 def free_port():
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def remote_profile(body):
+    mode = body.get("mode")
+    host = body.get("host")
+    if not isinstance(host, str) or not 1 <= len(host) <= 253:
+        raise ApiError(400, "请输入服务端 IP 或主机名")
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    try:
+        if "%" in host:
+            raise ValueError
+        host = str(ipaddress.ip_address(host))
+    except ValueError:
+        if not _HOST.fullmatch(host):
+            raise ApiError(400, "请输入服务端 IP 或主机名") from None
+        host = host.lower()
+    if mode not in ("direct", "ssh"):
+        raise ApiError(400, "请选择直连或 SSH 转发")
+    profile = {"mode": mode, "host": host, "port": int_arg(body, "port", 1, 65535, 7878)}
+    if mode == "ssh":
+        user = body.get("user")
+        if not isinstance(user, str) or not _SSH_USER.fullmatch(user):
+            raise ApiError(400, "请输入有效的 SSH 用户名")
+        profile.update(user=user, ssh_port=int_arg(body, "ssh_port", 1, 65535, 22))
+    return profile
+
+
+def probe_pord(host, port, timeout):
+    """只做 SPEC 8.3 的 HELLO 握手，确认端口上运行的是兼容的 pord。"""
+    deadline = time.monotonic() + timeout
+    with socket.create_connection((host, port), timeout=timeout) as conn:
+        conn.sendall(b"\x00\x00\x00\x03\x01\x00\x01")
+        response = bytearray()
+        while len(response) < 11:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            conn.settimeout(remaining)
+            chunk = conn.recv(11 - len(response))
+            if not chunk:
+                return False
+            response.extend(chunk)
+            if len(response) >= 7 and response[:7] != b"\x00\x00\x00\x07\x02\x00\x01":
+                return False
+        return True
+
+
+def stop_tunnel(proc):
+    if proc is None or proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
 
 def tail_lines(path, n):
@@ -379,6 +438,8 @@ class Console:
         self.pord = None
         self.pord_info = {}
         self.pord_lock = threading.Lock()
+        self.remote_lock = threading.RLock()
+        self.remote = None
         self.info_cache = {}
         self.version = self._version()
 
@@ -428,6 +489,7 @@ class Console:
             jobs = list(self.jobs)
         for j in jobs:
             j.cancel()
+        self.disconnect_remote(force=True)
         self.stop_pord()
 
     # ---- 参数辅助 ----
@@ -442,14 +504,26 @@ class Console:
         if target == "local":
             return ["--local", self.ws.abs(local_dir)], {"target": "local"}
         if target == "remote":
-            addr = body.get("server", "")
-            m = _ADDR.match(addr) if isinstance(addr, str) else None
-            if not m or not 1 <= int(m.group(2)) <= 65535:
-                raise ApiError(400, "服务端地址格式应为 host:port")
+            if "remote_profile" in body:
+                requested = body["remote_profile"]
+                with self.remote_lock:
+                    current = self.remote
+                    if not current or requested != current["profile"] or not self._remote_alive():
+                        raise ApiError(409, "请在存储服务端页面连接此文件对应的远程服务端")
+                    addr = current["address"]
+                    meta = {"target": "remote", "remote_profile": dict(current["profile"])}
+            else:
+                addr = body.get("server", "")
+                m = _ADDR.fullmatch(addr) if isinstance(addr, str) else None
+                if not m or not 1 <= int(m.group(2)) <= 65535:
+                    raise ApiError(400, "服务端地址格式应为 host:port")
+                meta = {"target": "remote", "server": addr}
+                if addr.startswith("["):
+                    addr = f"{m.group(1)[1:-1]}:{m.group(2)}"
             args = ["--server", addr]
             if "timeout" in body:
                 args += ["--timeout", str(int_arg(body, "timeout", 100, 600000))]
-            return args, {"target": "remote", "server": addr}
+            return args, meta
         raise ApiError(400, "target 只能是 local 或 remote")
 
     def key_path(self, rel, kinds):
@@ -511,9 +585,106 @@ class Console:
             "tags": tags,
             "out": ws.list_files("out"),
             "server": self.pord_status(),
+            "remote": self.remote_status(),
         }
 
     # ---- pord ----
+
+    def _remote_alive(self):
+        remote = self.remote
+        proc = remote["process"]
+        if proc is not None and proc.poll() is not None:
+            return False
+        now = time.monotonic()
+        if now - remote["checked"] >= 5:
+            remote["checked"] = now
+            try:
+                remote["alive"] = probe_pord(remote["host"], remote["port"], 0.5)
+            except OSError:
+                remote["alive"] = False
+        return remote["alive"]
+
+    def _remote_jobs_running(self):
+        if not self.remote or self.remote["process"] is None:
+            return False
+        with self.jobs_lock:
+            for job in self.jobs:
+                if job.ended is None and "--server" in job.argv:
+                    if job.argv[job.argv.index("--server") + 1] == self.remote["address"]:
+                        return True
+        return False
+
+    def remote_status(self):
+        with self.remote_lock:
+            if not self.remote:
+                return {"connected": False}
+            return {"connected": self._remote_alive(), "profile": self.remote["profile"]}
+
+    def disconnect_remote(self, force=False):
+        with self.remote_lock:
+            if not force and self._remote_jobs_running():
+                raise ApiError(409, "远程任务正在运行，结束后再断开")
+            if self.remote:
+                stop_tunnel(self.remote["process"])
+                self.remote = None
+        return {"connected": False}
+
+    def connect_remote(self, body):
+        profile = remote_profile(body)
+        with self.remote_lock:
+            if self._remote_jobs_running():
+                raise ApiError(409, "远程任务正在运行，结束后再重新连接")
+            host, port = profile["host"], profile["port"]
+            proc = None
+            try:
+                if profile["mode"] == "ssh":
+                    ssh = shutil.which("ssh")
+                    if ssh is None:
+                        raise ApiError(503, "找不到系统 OpenSSH 客户端")
+                    local_port = free_port()
+                    argv = [ssh, "-nNT", "-S", "none", "-o", "ControlMaster=no",
+                            "-o", "ForkAfterAuthentication=no", "-o", "BatchMode=yes",
+                            "-o", "StrictHostKeyChecking=yes", "-o", "UpdateHostKeys=no",
+                            "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "GatewayPorts=no",
+                            "-o", "ExitOnForwardFailure=yes", "-o", "ConnectTimeout=5",
+                            "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
+                            "-p", str(profile["ssh_port"]), "-l", profile["user"],
+                            "-L", f"127.0.0.1:{local_port}:127.0.0.1:{port}", "--", host]
+                    with tempfile.TemporaryFile() as errors:
+                        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+                                                stdout=subprocess.DEVNULL, stderr=errors)
+                        deadline = time.monotonic() + 8
+                        while time.monotonic() < deadline:
+                            if proc.poll() is not None:
+                                errors.seek(0)
+                                error = errors.read(4096).decode("utf-8", errors="replace").lower()
+                                if "host key" in error or "host identification" in error:
+                                    raise ApiError(502, "SSH 主机密钥校验失败。请先在终端核对服务器指纹")
+                                if "permission denied" in error:
+                                    raise ApiError(502, "SSH 认证失败。请检查用户名和本机 SSH 密钥")
+                                raise ApiError(502, "SSH 连接失败。请检查服务器 IP、SSH 端口与网络")
+                            try:
+                                if probe_pord("127.0.0.1", local_port, 0.5) and proc.poll() is None:
+                                    break
+                            except OSError:
+                                pass
+                            time.sleep(0.1)
+                        else:
+                            raise ApiError(502, "SSH 转发未收到 pord 响应。请检查远端 pord 和端口")
+                    host, port = "127.0.0.1", local_port
+                elif not probe_pord(host, port, 3):
+                    raise ApiError(502, "端口已接通，但未收到兼容的 pord 握手")
+                previous = self.remote
+                self.remote = {"process": proc, "profile": profile, "address": f"{host}:{port}",
+                               "host": host, "port": port, "checked": time.monotonic(), "alive": True}
+                proc = None
+                if previous:
+                    stop_tunnel(previous["process"])
+                return {"connected": True, "profile": profile}
+            except OSError:
+                raise ApiError(502, "无法连接服务端。请检查地址、端口与网络") from None
+            finally:
+                stop_tunnel(proc)
 
     def pord_status(self):
         with self.pord_lock:
@@ -894,7 +1065,10 @@ def make_handler(console, token, port):
                                                               self.rfile))
                 body = self.read_json()
                 if path in POST_ROUTES:
-                    job = getattr(console, POST_ROUTES[path])(body)
+                    # 保持连接至任务已登记，避免同时断开时关闭即将使用的隧道。
+                    lock = console.remote_lock if "remote_profile" in body else nullcontext()
+                    with lock:
+                        job = getattr(console, POST_ROUTES[path])(body)
                     return self.send_json(200, job.snapshot())
                 if path == "/api/remove":
                     return self.send_json(200, console.api_remove(body))
@@ -902,6 +1076,10 @@ def make_handler(console, token, port):
                     return self.send_json(200, console.start_pord(body))
                 if path == "/api/server/stop":
                     return self.send_json(200, console.stop_pord())
+                if path == "/api/server/connect":
+                    return self.send_json(200, console.connect_remote(body))
+                if path == "/api/server/disconnect":
+                    return self.send_json(200, console.disconnect_remote())
                 m = re.fullmatch(r"/api/jobs/([0-9]{1,9})/cancel", path)
                 if m:
                     job = console.get_job(int(m.group(1)))

@@ -14,6 +14,7 @@ import http.client
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -227,16 +228,37 @@ def main():
 
         # ---- 远程：本机 pord ----
         st, state = c.get("/api/state")
+        st, _ = c.post("/api/server/connect", {"mode": "ssh", "host": "-V", "user": "demo"})
+        check(st == 400, f"invalid SSH host: HTTP {st}")
+        with socket.socket() as unserved:
+            unserved.bind(("127.0.0.1", 0))
+            st, _ = c.post("/api/server/connect", {"mode": "direct", "host": "127.0.0.1",
+                                                    "port": unserved.getsockname()[1]})
+            check(st == 502, f"unreachable pord: HTTP {st}")
         if state.get("server", {}).get("available"):
             st, s = c.post("/api/server/start", {"threads": 2})
             check(st == 200 and s.get("running"), f"pord start: {st} {s}")
             addr = s.get("address", "")
             check(addr.startswith("127.0.0.1:"), f"pord address {addr}")
+            profile = {"mode": "direct", "host": "127.0.0.1", "port": int(addr.split(":")[1])}
+            st, remote = c.post("/api/server/connect", profile)
+            check(st == 200 and remote.get("profile") == profile, f"pord connect: {st} {remote}")
             d = c.job("/api/store", {"key": "keys/pub/pub.sk", "input": f"data/{name}",
-                                     "target": "remote", "server": addr})
+                                     "target": "remote", "remote_profile": profile})
             rtag = d.get("extra", {}).get("tag", "")
+            st, snapshot = c.get("/api/state")
+            remote_meta = next((t.get("meta", {}) for t in snapshot["tags"] if t["path"] == rtag), {})
+            check(st == 200 and remote_meta.get("remote_profile") == profile and "server" not in remote_meta,
+                  f"remote target metadata: {remote_meta}")
+            st, _ = c.post("/api/server/disconnect")
+            check(st == 200, f"pord disconnect: HTTP {st}")
+            st, _ = c.post("/api/audit", {"key": "keys/pub/pub.pk", "tag": rtag, "target": "remote",
+                                          "remote_profile": profile})
+            check(st == 409, f"audit without connection: HTTP {st}")
+            st, _ = c.post("/api/server/connect", profile)
+            check(st == 200, f"pord reconnect: HTTP {st}")
             d = c.job("/api/porta", {"pk": "keys/pub/pub.pk", "tags": [rtag], "count": 1,
-                                     "target": "remote", "server": addr})
+                                     "target": "remote", "remote_profile": profile})
             check(d.get("result") == "PASS", f"porta remote: {d.get('outputs')} {d.get('log')}")
             d = c.job("/api/retrieve", {"key": "keys/pub/pub.pk", "tag": rtag, "target": "remote",
                                         "server": addr})
@@ -248,6 +270,12 @@ def main():
                   "pord trace has no prove_done event")
             st, s = c.post("/api/server/stop")
             check(st == 200 and not s.get("running"), f"pord stop: {s}")
+        with socket.socket() as other_service:
+            other_service.bind(("127.0.0.1", 0))
+            other_service.listen()
+            st, _ = c.post("/api/server/connect", {"mode": "direct", "host": "127.0.0.1",
+                                                    "port": other_service.getsockname()[1]})
+            check(st == 502, f"TCP listener without pord handshake: HTTP {st}")
 
         # ---- 删除工作区文件 ----
         st, _ = c.post("/api/remove", {"path": "store"})
