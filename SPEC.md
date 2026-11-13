@@ -1,6 +1,6 @@
 # SPEC.md — swpor：基于 Shacham–Waters 紧凑可恢复性证明的数据审计系统
 
-> 版本：v0.10（草案） · 状态：待评审
+> 版本：v0.11（草案） · 状态：待评审
 > 依据论文：H. Shacham, B. Waters. *Compact Proofs of Retrievability*. Asiacrypt 2008（本仓库所附 PDF 为完整版）。
 > 本文件是实现的**唯一事实来源**。代码与本文件不一致时，以本文件为准；需要偏离时，先改本文件（并在第 14 节"变更记录"登记），再改代码。
 
@@ -491,6 +491,7 @@ porbench detect [--n 10000] [--s 1] [--l 128] [--ratios 0.001,0.005,0.01,0.05,0.
 - 组成：后端 `ui/server.py`（只用 Python ≥ 3.9 标准库）+ 前端 `ui/web/`（HTML、CSS、原生 JavaScript，无构建步骤，无第三方依赖）。不提供"教学模式"，不在前端或后端重新实现任何算法。
 - 后端以子进程方式调用 `porctl` / `porta` / `pord`（参数列表，不经过 shell），一律加 `--json`，`porctl` 另加 `--trace -`；**不链接 `libswpor`**。前端展示的结果和执行轨迹都来自这些程序的实际输出（9.2、9.4）。
 - 启动：`python3 ui/server.py --bin <可执行文件目录> --workspace <目录> [--port 8787] [--max-upload <MiB，默认 1024>]`，启动后打印访问地址 `http://127.0.0.1:<port>/#token=<令牌>`。
+- 公开审计默认在 Web 页面隐藏。服务启动时读取仓库根目录 `.env` 中的 `SWPOR_WEB_PUBLIC_AUDIT`，进程环境中的同名变量优先。设为 `true` 可显示 Pub 方案、已有 Pub 密钥及标签和第三方审计页面。未配置时默认为 `false`，只控制页面展示；CLI、HTTP 操作接口和工作区文件保持原有行为。
 - 功能（按三方角色组织）：
   - 数据所有者：`keygen`、上传文件、`store`（s、RS、置乱、加密，本地或远程）、`info`、`retrieve`（结果可下载）、`delete`、`audit`。
   - 存储服务端：在本机启动 / 停止 `pord`（只监听 127.0.0.1，数据目录在工作区内），显示状态与日志；Windows 上没有 `pord`（2.1），只能填写远程服务端地址。
@@ -608,3 +609,4 @@ porbench detect [--n 10000] [--s 1] [--l 128] [--ratios 0.001,0.005,0.01,0.05,0.
 | 2026-11-11 | v0.8 | 2.1：依赖按平台获取——Linux 用 apt、macOS 用 Homebrew、Windows 用 vcpkg（vcpkg 的 isal 端口不支持 arm64 macOS） | |
 | 2026-11-11 | v0.9 | M-UI 改为本机 Web 控制台：重写 9.5（Python 标准库后端 + 原生 JS 前端，以子进程调用 CLI，去掉教学模式与实况回放），更新 1.3 验收标准，新增 T-27；OPEN-6 延期 | |
 | 2026-11-13 | v0.10 | 2.1：本机演示阶段仅在 CI 中验证 macOS arm64，Linux x86_64 与 Windows x64 检查推迟到跨平台适配阶段 | |
+| 2026-11-13 | v0.11 | 9.5：Web 控制台默认隐藏公开审计，启动时从仓库根目录 `.env` 或进程环境读取 `SWPOR_WEB_PUBLIC_AUDIT` | |

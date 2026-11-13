@@ -36,6 +36,8 @@ import webbrowser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
+ENV_FILE = os.path.join(os.path.dirname(HERE), ".env")
+PUBLIC_AUDIT_VAR = "SWPOR_WEB_PUBLIC_AUDIT"
 
 SUBDIRS = ("keys", "data", "tags", "store", "srv", "out", "logs")
 MAX_RUNNING_JOBS = 4
@@ -344,10 +346,29 @@ class Job:
 # 应用：任务调度、pord 管理、API 实现                                    #
 # ===================================================================== #
 
+def public_audit_enabled():
+    """读取公开审计开关，进程环境优先于仓库根目录的 .env。"""
+    value = os.environ.get(PUBLIC_AUDIT_VAR)
+    if value is None:
+        value = "false"
+        try:
+            with open(ENV_FILE, encoding="utf-8-sig") as env_file:
+                for line in env_file:
+                    key, sep, setting = line.split("#", 1)[0].partition("=")
+                    if sep and key.strip() == PUBLIC_AUDIT_VAR:
+                        value = setting.strip()
+                        if len(value) >= 2 and value[0] in ("'", '"') and value[-1] == value[0]:
+                            value = value[1:-1]
+        except FileNotFoundError:
+            pass
+    return value.strip().lower() == "true"
+
+
 class Console:
     def __init__(self, bindir, ws, max_upload):
         self.ws = ws
         self.max_upload = max_upload
+        self.public_audit = public_audit_enabled()
         self.exe = {n: find_exe(bindir, n) for n in ("porctl", "porta", "pord")}
         porctl = self.exe["porctl"]
         if porctl is None:
@@ -483,6 +504,7 @@ class Console:
             "platform": sys.platform,
             "workspace": ws.root,
             "programs": {k: v is not None for k, v in self.exe.items()},
+            "public_audit": self.public_audit,
             "max_upload": self.max_upload,
             "keys": keys,
             "data": ws.list_files("data"),

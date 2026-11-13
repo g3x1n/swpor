@@ -191,6 +191,11 @@ const VIEWS = [
   ["files", "工作区"],
 ];
 
+function publicAuditVisible() { return S.data?.public_audit === true; }
+function viewAvailable(id) {
+  return (id !== "auditor" || publicAuditVisible()) && VIEWS.some(([view]) => view === id);
+}
+
 async function refreshState() {
   try {
     S.data = await api("/api/state");
@@ -225,7 +230,8 @@ async function loadJobs() {
     const running = j.status === "running";
     if (was !== j.status && !running) finished = true;
     // 选中的任务运行中时持续刷新；其他任务结束后取一次完整结果
-    if ((j.id === S.selected && running) || (!running && cached?.ended == null)) {
+    if ((running && (j.id === S.selected || (!publicAuditVisible() && !cached))) ||
+        (!running && cached?.ended == null)) {
       fetches.push(api("/api/jobs/" + j.id).then((d) => S.details.set(j.id, d)).catch(() => {}));
     }
   }
@@ -300,9 +306,14 @@ function intOf(id, def) {
 
 /* ---- 由状态导出的列表 ---- */
 
+function keys() {
+  const list = S.data?.keys || [];
+  return publicAuditVisible() ? list : list.filter((k) => k.scheme === "priv");
+}
+
 function keyFiles(kinds) {
   const out = [];
-  for (const k of (S.data ? S.data.keys : [])) {
+  for (const k of keys()) {
     for (const f of k.files) if (kinds.includes(f.kind)) out.push({ ...f, key: k.name, scheme: k.scheme });
   }
   return out;
@@ -311,7 +322,10 @@ const KIND_LABEL = { priv: "Priv 私钥", pub_sk: "Pub 私钥", pub_pk: "Pub 公
 function keyOptions(kinds) {
   return keyFiles(kinds).map((f) => ({ value: f.path, label: `${f.key} / ${f.name}（${KIND_LABEL[f.kind]}）` }));
 }
-function tags() { return S.data ? S.data.tags : []; }
+function tags() {
+  const list = S.data?.tags || [];
+  return publicAuditVisible() ? list : list.filter((t) => t.info.scheme !== "pub");
+}
 function tagByPath(p) { return tags().find((t) => t.path === p); }
 function tagByFid(fid) { return tags().find((t) => t.info && t.info.file_id === fid); }
 function serverAddr() {
@@ -353,6 +367,20 @@ function jobBadge(j) {
 function argOf(cmd, name) {
   const i = (cmd || []).indexOf(name);
   return i >= 0 ? cmd[i + 1] : undefined;
+}
+
+function visibleJobs() {
+  if (publicAuditVisible()) return S.jobs;
+  return S.jobs.filter((job) => {
+    const command = S.details.get(job.id)?.command;
+    if (!command || job.kind === "porta" || argOf(command, "--scheme") === "pub") return false;
+    const keyName = baseName(argOf(command, "--key"));
+    if (keyName === "pub.sk" || keyName === "pub.pk") return false;
+    const tagPath = argOf(command, "--tag");
+    const fileId = argOf(command, "--file-id");
+    return !S.data?.tags.some((t) => t.info.scheme === "pub" &&
+      (t.path === tagPath || (fileId && t.info.file_id === fileId)));
+  });
 }
 
 const JOB_LABELS = {
@@ -425,7 +453,7 @@ function renderInlineJobs() {
 /** 已结束的审计记录（porctl audit 与 porta），按时间倒序 */
 function auditRecords(kinds) {
   const recs = [];
-  for (const j of S.jobs) {
+  for (const j of visibleJobs()) {
     if (!kinds.includes(j.kind) || j.status === "running") continue;
     const d = S.details.get(j.id);
     if (!d) continue;
@@ -502,7 +530,7 @@ function setJobsOpen(open, opener = null) {
   jobs.inert = !open;
   if (modal && !wasModal) close.focus();
   if (!modal) drawerOpener = null;
-  renderJobsToggle(S.jobs.filter((j) => j.status === "running").length);
+  renderJobsToggle(visibleJobs().filter((j) => j.status === "running").length);
 }
 
 function showJob(id, opener) {
@@ -551,8 +579,9 @@ function renderNav() {
   const nav = document.getElementById("nav");
   nav.replaceChildren();
   const iconFor = { overview: "overview", owner: "owner", server: "server", auditor: "auditor", tamper: "tamper", files: "files" };
-  VIEWS.forEach(([id, label], i) => {
-    if (i === 4) nav.append(h("div", { class: "nav-sep" }));
+  for (const [id, label] of VIEWS) {
+    if (!viewAvailable(id)) continue;
+    if (id === "tamper") nav.append(h("div", { class: "nav-sep" }));
     nav.append(h("button", {
       class: "nav-item" + (S.view === id ? " active" : ""),
       title: label,
@@ -561,11 +590,13 @@ function renderNav() {
       "aria-current": S.view === id ? "page" : null,
       onclick: () => { go(id); document.getElementById("nav-" + id).focus(); },
     }, icon(iconFor[id]), h("span", { class: "nav-label" }, label)));
-  });
-  nav.append(h("div", { class: "nav-foot" }, "仅监听 127.0.0.1", h("br"), "结果来自 porctl / porta / pord 实际输出"));
+  }
+  nav.append(h("div", { class: "nav-foot" }, "仅监听 127.0.0.1", h("br"),
+    publicAuditVisible() ? "结果来自 porctl / porta / pord 实际输出" : "结果来自 porctl / pord 实际输出"));
 }
 
 function go(view) {
+  if (!viewAvailable(view)) return;
   S.view = view;
   try { sessionStorage.setItem("swpor-view", view); } catch (e) { /* 忽略 */ }
   renderNav();
@@ -577,8 +608,10 @@ function go(view) {
 function renderJobs() {
   const list = document.getElementById("job-list");
   const detail = document.getElementById("job-detail");
-  const running = S.jobs.filter((j) => j.status === "running").length;
-  const sig = JSON.stringify([S.selected, S.jobs, S.details.get(S.selected)]);
+  const jobs = visibleJobs();
+  const running = jobs.filter((j) => j.status === "running").length;
+  const selected = jobs.some((j) => j.id === S.selected) ? S.details.get(S.selected) : null;
+  const sig = JSON.stringify([jobs, selected]);
   if (list.dataset.signature === sig) return;
   list.dataset.signature = sig;
   const active = document.activeElement;
@@ -586,7 +619,7 @@ function renderJobs() {
   const st = list.scrollTop;
   const ds = detail.scrollTop;
   const openDetails = new Set([...detail.querySelectorAll("details[open]")].map((el) => el.id));
-  list.replaceChildren(...S.jobs.map((j) => h("button", {
+  list.replaceChildren(...jobs.map((j) => h("button", {
       id: "job-item-" + j.id,
       type: "button",
       class: "job-item" + (j.id === S.selected ? " sel" : ""),
@@ -596,8 +629,8 @@ function renderJobs() {
     h("span", { class: "jt", title: j.title }, `#${j.id} ${j.title}`),
     jobBadge(j),
     h("span", { class: "jm" }, `${fmtTime(j.started)} · ${fmtMs(j.elapsed_ms)}`))));
-  if (!S.jobs.length) list.append(h("div", { class: "empty" }, "还没有任务"));
-  detail.replaceChildren(...renderJobDetail().childNodes);
+  if (!jobs.length) list.append(h("div", { class: "empty" }, "还没有任务"));
+  detail.replaceChildren(...renderJobDetail(selected).childNodes);
   for (const el of detail.querySelectorAll("details")) el.open = openDetails.has(el.id);
   list.scrollTop = st;
   detail.scrollTop = ds;
@@ -610,16 +643,17 @@ function renderJobs() {
 /** 顶栏上的任务按钮，显示运行中任务数。 */
 function renderJobsToggle(running) {
   const b = document.getElementById("jobs-toggle");
-  b.replaceChildren(b.getAttribute("aria-expanded") === "true" ? "收起任务栏" : "任务与轨迹",
+  const count = visibleJobs().length;
+  b.replaceChildren();
+  append(b, [b.getAttribute("aria-expanded") === "true" ? "收起任务栏" : "任务与轨迹",
     running ? h("span", { class: "badge run" }, h("span", { class: "dot" }), running)
-      : S.jobs.length ? h("span", { class: "badge" }, S.jobs.length) : null);
+      : count ? h("span", { class: "badge" }, count) : null]);
 }
 
 /* ---- 任务详情：命令、结果、trace 时间线 ---- */
 
-function renderJobDetail() {
+function renderJobDetail(d) {
   const box = h("div", { class: "job-detail" });
-  const d = S.selected !== null ? S.details.get(S.selected) : null;
   if (!d) {
     box.append(h("div", { class: "empty" }, "选择一个任务查看命令、结果与执行轨迹"));
     return box;
@@ -795,6 +829,9 @@ function pageHead(title, desc) {
 
 function viewOverview() {
   const d = S.data;
+  const publicAudit = publicAuditVisible();
+  const visibleKeys = keys();
+  const visibleTags = tags();
   const recs = auditRecords(["audit", "porta"]);
   const pass = recs.filter((r) => r.result === "PASS").length;
   const fail = recs.filter((r) => r.result === "FAIL").length;
@@ -808,32 +845,33 @@ function viewOverview() {
 
   const has = (kind, pred) => S.jobs.some((j) => j.kind === kind && j.status !== "running" && (!pred || pred(j)));
   const steps = [
-    ["生成密钥", "数据所有者生成 Priv 或 Pub 密钥（porctl keygen）", d.keys.length > 0, "owner"],
+    ["生成密钥", publicAudit ? "数据所有者生成 Priv 或 Pub 密钥" : "数据所有者生成私有审计密钥", visibleKeys.length > 0, "owner"],
     ["上传数据文件", "把要外包存储的文件放进工作区", d.data.length > 0, "owner"],
-    ["预处理与存储", "纠删码编码、打标签，存入服务端（porctl store）", d.tags.length > 0, "owner"],
-    ["审计通过", "挑战 → 证明 → 验证，结果 PASS（porctl audit / porta）", pass > 0, "auditor"],
+    ["预处理与存储", "纠删码编码、打标签，保存文件", visibleTags.length > 0, "owner"],
+    ["审计通过", "挑战 → 证明 → 验证，结果 PASS", pass > 0, publicAudit ? "auditor" : "owner"],
     ["篡改存储块", "在本地存储中按比例篡改（porctl tamper）", has("tamper", (j) => j.exit_code === 0), "tamper"],
     ["审计失败", "再次审计，结果 FAIL", fail > 0, "tamper"],
     ["恢复文件", "纠删码按擦除恢复原文件（porctl retrieve）", has("retrieve", (j) => j.exit_code === 0), "owner"],
   ];
   return [
-    pageHead("概览", "本控制台以子进程调用 porctl、porta、pord，页面上的结果和执行轨迹都是这些程序的实际输出。"),
+    pageHead("概览", publicAudit ? "存储、审计和恢复文件，查看各角色的执行轨迹。" :
+      "存储文件、发起私有审计、模拟损坏并尝试恢复。"),
     h("div", { class: "grid grid-4" },
-      stat("密钥", d.keys.length, `${d.keys.filter((k) => k.scheme === "priv").length} Priv · ${d.keys.filter((k) => k.scheme === "pub").length} Pub`),
-      stat("已存储文件", d.tags.length, `本地 ${d.tags.filter((t) => t.local_stored).length} · 远程 ${d.tags.filter((t) => (t.meta || {}).target === "remote").length}`),
+      stat("密钥", visibleKeys.length, publicAudit ? `${visibleKeys.filter((k) => k.scheme === "priv").length} Priv · ${visibleKeys.filter((k) => k.scheme === "pub").length} Pub` : "私有审计"),
+      stat("已存储文件", visibleTags.length, `本地 ${visibleTags.filter((t) => t.local_stored).length} · 远程 ${visibleTags.filter((t) => (t.meta || {}).target === "remote").length}`),
       stat("审计 PASS", pass, `共 ${recs.length} 次审计`),
       stat("审计 FAIL", fail, fail ? "检测到数据损坏" : "尚未检测到损坏")),
-    h("div", { class: "card" }, h("h2", {}, "三方模型", h("span", { class: "sub" }, "点击进入对应角色")),
-      h("div", { class: "parties" },
+    h("div", { class: "card" }, h("h2", {}, publicAudit ? "三方模型" : "私有审计流程", h("span", { class: "sub" }, "点击进入对应角色")),
+      h("div", { class: publicAudit ? "parties" : "parties private-audit" },
         party("owner", "数据所有者", "持有私钥，预处理文件并生成标签，可审计、恢复。",
-          [`密钥 ${d.keys.length} 个`, `数据文件 ${d.data.length} 个`], "owner"),
-        link("存储", "检索 / 删除", true),
+          [`密钥 ${visibleKeys.length} 个`, `数据文件 ${d.data.length} 个`], "owner"),
+        link(publicAudit ? "存储" : "存储 / 挑战", publicAudit ? "检索 / 删除" : "检索 / 证明", true),
         party("server", "存储服务端 pord", "存储编码后的文件和标签，响应挑战生成证明。",
           [d.server.available ? (d.server.running ? `运行中 ${d.server.address}` : "未启动") : "本平台不可用",
-            `服务端文件 ${d.server.files.length} 个`], "server"),
-        link("挑战", "证明", true),
-        party("auditor", "第三方审计者 porta", "只持有公钥与文件标签，公开验证。",
-          [`公钥 ${keyFiles(["pub_pk"]).length} 个`, `Pub 文件 ${d.tags.filter((t) => t.info.scheme === "pub").length} 个`], "auditor"))),
+            `服务端文件 ${serverFileIds().length} 个`], "server"),
+        publicAudit ? [link("挑战", "证明", true),
+          party("auditor", "第三方审计者 porta", "只持有公钥与文件标签，公开验证。",
+            [`公钥 ${keyFiles(["pub_pk"]).length} 个`, `Pub 文件 ${visibleTags.filter((t) => t.info.scheme === "pub").length} 个`], "auditor")] : null)),
     h("div", { class: "grid grid-2" },
       h("div", { class: "card" }, h("h2", {}, "演示流程", h("span", { class: "sub" }, `${steps.filter((s) => s[2]).length} / ${steps.length} 完成`)),
         h("ol", { class: "steps" }, steps.map(([t, desc, done, v], i) => h("li", { class: done ? "done" : "" },
@@ -880,10 +918,11 @@ function viewOwner() {
 }
 
 function cardKeys() {
-  const d = S.data;
-  const list = d.keys.length ? h("table", { class: "tbl" },
+  const visibleKeys = keys();
+  const publicAudit = publicAuditVisible();
+  const list = visibleKeys.length ? h("table", { class: "tbl" },
     h("tr", {}, h("th", {}, "名称"), h("th", {}, "方案"), h("th", {}, "文件"), h("th", {})),
-    d.keys.map((k) => h("tr", {},
+    visibleKeys.map((k) => h("tr", {},
       h("td", {}, k.name),
       h("td", {}, h("span", { class: "badge accent" }, k.scheme === "priv" ? "Priv" : "Pub")),
       h("td", { class: "mono muted" }, k.files.map((f) => f.name).join("  ")),
@@ -894,11 +933,11 @@ function cardKeys() {
   return h("div", { class: "card" }, h("h2", {}, "密钥", h("span", { class: "sub" }, "porctl keygen")),
     list,
     h("div", { class: "form" },
-      field("方案", selectInput("kg-scheme", [{ value: "priv", label: "Priv（私有验证）" }, { value: "pub", label: "Pub（公开验证）" }], "priv")),
-      field("名称", textInput("kg-name", "", { placeholder: "默认 priv-key / pub-key" }))),
+      publicAudit ? field("方案", selectInput("kg-scheme", [{ value: "priv", label: "Priv（私有验证）" }, { value: "pub", label: "Pub（公开验证）" }], "priv")) : null,
+      field("名称", textInput("kg-name", "", { placeholder: publicAudit ? "默认 priv-key / pub-key" : "默认 priv-key" }))),
     h("div", { class: "actions" }, h("button", {
       class: "btn primary",
-      onclick: () => runJob("/api/keygen", { scheme: F["kg-scheme"], name: (F["kg-name"] || "").trim() || undefined }),
+      onclick: () => runJob("/api/keygen", { scheme: publicAudit ? F["kg-scheme"] : "priv", name: (F["kg-name"] || "").trim() || undefined }),
     }, "生成密钥")),
     inlineJob("keygen"));
 }
@@ -946,7 +985,7 @@ function cardStore() {
   const remote = fval("st-target", "local") === "remote";
   const rerender = () => renderView();
   return h("div", { class: "card" }, h("h2", {}, "预处理并存储", h("span", { class: "sub" }, "porctl store：纠删码 → 置乱 / 加密 → 分块 → 打标签")),
-    keyOpts.length && dataOpts.length ? null : h("div", { class: "notice" }, "需要先生成 Priv 或 Pub 密钥，并上传数据文件。"),
+    keyOpts.length && dataOpts.length ? null : h("div", { class: "notice" }, "需要先生成密钥，并上传数据文件。"),
     h("div", { class: "form" },
       field("密钥", selectInput("st-key", keyOpts, "", rerender)),
       field("数据文件", selectInput("st-input", dataOpts, "")),
@@ -1019,7 +1058,9 @@ function cardStored() {
     h("div", { class: "form" },
       field("挑战块数 l", numInput("ow-l", "128", { min: 1 })),
       h("div", { class: "field" }, h("span", {}, "挑战方式"), checkInput("ow-seed", "种子挑战（--seed-mode）", false))),
-    h("p", { class: "hint" }, "审计和恢复默认使用存储时的密钥；Pub 文件也可以交给第三方审计者用公钥审计。"),
+    h("p", { class: "hint" }, publicAuditVisible() ?
+      "审计和恢复默认使用存储时的密钥；Pub 文件也可以交给第三方审计者用公钥审计。" :
+      "审计和恢复默认使用存储时的密钥。"),
     body);
 }
 function auditL() {
@@ -1049,8 +1090,16 @@ async function removePath(path, msg) {
 
 /* ---------------- 存储服务端 ---------------- */
 
+function serverFileIds() {
+  const ids = S.data.server.files;
+  if (publicAuditVisible()) return ids;
+  const publicIds = new Set(S.data.tags.filter((t) => t.info.scheme === "pub").map((t) => t.info.file_id));
+  return ids.filter((id) => !publicIds.has(id));
+}
+
 function viewServer() {
   const s = S.data.server;
+  const fileIds = serverFileIds();
   const head = pageHead("存储服务端", "pord 存储编码后的文件和标签，响应挑战并生成证明。控制台启动的 pord 只监听 127.0.0.1，数据目录为工作区 srv/。");
   if (!s.available) {
     return [head, h("div", { class: "notice warn" },
@@ -1077,7 +1126,7 @@ function viewServer() {
       },
     }, "启动 pord")));
   const files = h("div", { class: "card" }, h("h2", {}, "服务端存储的文件", h("span", { class: "sub" }, "srv/")),
-    s.files.length ? h("table", { class: "tbl" }, s.files.map((fid) => {
+    fileIds.length ? h("table", { class: "tbl" }, fileIds.map((fid) => {
       const t = tagByFid(fid);
       return h("tr", {}, h("td", { class: "mono" }, shortId(fid)), h("td", {}, t ? t.name : h("span", { class: "muted" }, "（无本地标签）")));
     })) : h("div", { class: "empty" }, "没有文件"));
@@ -1261,14 +1310,16 @@ function viewFiles() {
   return [
     pageHead("工作区", "控制台读写的文件都在工作区的固定子目录中。"),
     h("div", { class: "card" }, kv([["路径", h("span", { class: "mono" }, d.workspace)],
-      ["程序", Object.entries(d.programs).map(([k, v]) => `${k} ${v ? "✓" : "✗"}`).join("   ")]])),
+      ["程序", Object.entries(d.programs).filter(([k]) => k !== "porta" || publicAuditVisible())
+        .map(([k, v]) => `${k} ${v ? "✓" : "✗"}`).join("   ")]])),
     h("div", { class: "grid grid-2" },
       section("数据文件", "data/", d.data, true),
-      section("标签", "tags/", d.tags, false),
+      section("标签", "tags/", tags(), false),
       section("恢复结果", "out/", d.out, true),
       h("div", { class: "card" }, h("h2", {}, "其他目录"), kv([
         ["keys/", "密钥文件（私钥内容不会发送到浏览器）"], ["store/", "本地存储（--local）"],
-        ["srv/", "控制台启动的 pord 的数据目录"], ["logs/", "pord 日志、trace、porta 审计日志"]]))),
+        ["srv/", "控制台启动的 pord 的数据目录"],
+        ["logs/", publicAuditVisible() ? "pord 日志、trace、porta 审计日志" : "pord 日志、trace"]]))),
   ];
 }
 
@@ -1283,10 +1334,6 @@ async function boot() {
       h("p", {}, "请使用 ui/server.py 启动时打印的完整地址（包含 #token=…）打开控制台。")));
     return;
   }
-  try {
-    const v = sessionStorage.getItem("swpor-view");
-    if (v && VIEWS.some(([id]) => id === v)) S.view = v;
-  } catch (e) { /* 忽略 */ }
   const navToggle = document.getElementById("nav-toggle");
   const jobsToggle = document.getElementById("jobs-toggle");
   navToggle.addEventListener("click", () => setNavOpen(navToggle.getAttribute("aria-expanded") !== "true"));
@@ -1296,7 +1343,6 @@ async function boot() {
   DRAWER.addEventListener("change", (e) => setJobsOpen(!e.matches && dockedJobsOpen));
   document.addEventListener("keydown", handleDrawerKey);
   setJobsOpen(!DRAWER.matches);
-  renderNav();
   renderJobs();
   await refreshState();
   if (!S.data) {
@@ -1304,7 +1350,12 @@ async function boot() {
       h("h1", {}, "无法连接后端"), h("p", {}, "令牌可能已失效（后端重启后会生成新令牌），请使用新打印的地址打开。")));
     return;
   }
-  poll();
+  let view = "overview";
+  try {
+    const saved = sessionStorage.getItem("swpor-view");
+    if (viewAvailable(saved)) view = saved;
+  } catch (e) { /* 忽略 */ }
+  go(view);
 }
 
 boot();

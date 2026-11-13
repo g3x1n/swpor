@@ -21,6 +21,7 @@ __pycache__/
 .venv/
 
 # 运行时数据与密钥（绝不能提交）
+/.env
 *.key
 *.sk
 /keys/
