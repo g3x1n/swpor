@@ -161,7 +161,8 @@ def main():
         q = urllib.parse.quote(name)
         st, j = c.post(f"/api/upload?name={q}", data)
         check(st == 200 and j.get("path") == f"data/{name}", f"upload: {st} {j}")
-        st, _ = c.post(f"/api/upload?name={q}", data)
+        # 重复名称在读取请求体前就会被拒绝，只发送一个字节以避免发送与断开连接竞争。
+        st, _ = c.post(f"/api/upload?name={q}", b"x")
         check(st == 409, f"duplicate upload: HTTP {st}")
         for bad in ("../x.bin", "a/b", "..", ".hidden", "x\\y", ""):
             st, _ = c.post("/api/upload?name=" + urllib.parse.quote(bad), b"x")
