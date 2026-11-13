@@ -367,6 +367,7 @@ pre.log {
 .stat .foot { font-size: 12px; color: var(--text-2); }
 
 .parties { display: grid; grid-template-columns: 1fr 96px 1fr 96px 1fr; align-items: stretch; }
+.parties.private-audit { grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr); }
 .party {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -411,7 +412,7 @@ pre.log {
   border-right-color: var(--border-strong);
 }
 @container (max-width: 760px) {
-  .parties { grid-template-columns: minmax(0, 1fr); }
+  .parties, .parties.private-audit { grid-template-columns: minmax(0, 1fr); }
   .link { flex-direction: row; gap: 10px; padding: 8px 0; }
   .link .arrow { display: none; }
   .link span:first-child::after { content: "  ⇅"; }

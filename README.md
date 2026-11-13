@@ -75,8 +75,8 @@ $B/porta  --pk keys/pub.pk --tag data.tag --server 127.0.0.1:7878 --interval 360
 python3 ui/server.py --bin build/debug/apps --workspace ~/swpor-ws --open
 ```
 
-在浏览器中按数据所有者、存储服务端、第三方审计者三方角色完成存储、审计、篡改实验、恢复，
-并查看每个任务的执行轨迹。只监听 127.0.0.1，需要启动时打印的带令牌地址（SPEC 9.5，用户手册第 8 节）。
+默认展示私有审计，可在浏览器中完成存储、审计、篡改实验和恢复，并查看执行轨迹。
+需要展示 Pub 方案和第三方审计时，把仓库根目录 `.env` 中的 `SWPOR_WEB_PUBLIC_AUDIT` 改为 `true`，重启后使用新打印的带令牌地址。没有 `.env` 时，可从 `.env.example` 复制一份（SPEC 9.5，用户手册第 8 节）。
 
 所有子命令都支持 `--json`；`--trace <file|->` 输出 NDJSON 执行轨迹（SPEC 9.4）。
 完整说明见 [`docs/reports/user-manual.md`](docs/reports/user-manual.md)。

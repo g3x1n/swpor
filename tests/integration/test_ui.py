@@ -2,6 +2,7 @@
 """
 T-27 Web 控制台（SPEC 9.5）端到端测试，只用 Python 标准库：
   - 通过 HTTP API 完成 keygen → 上传 → store → audit PASS → tamper → audit FAIL → retrieve 并下载比对；
+  - 公开审计默认关闭，从 .env 读取配置，进程环境优先；
   - Pub 文件经 porta 审计；有 pord 的平台上启动本机 pord 并完成远程 store / 审计；
   - 缺少或错误的令牌、非法 Host、跨源请求返回 403；路径穿越与非法名称被拒绝；
   - API 响应中不出现私钥内容。
@@ -75,11 +76,16 @@ class Client:
         return {}
 
 
-def start_console(build, ws):
+def start_console(build, ws, public_audit=None, script=None):
     bindir = os.path.join(build, "apps")
-    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "ui", "server.py"), "--bin", bindir,
+    env = os.environ.copy()
+    env.pop("SWPOR_WEB_PUBLIC_AUDIT", None)
+    if public_audit is not None:
+        env["SWPOR_WEB_PUBLIC_AUDIT"] = public_audit
+    script = script or os.path.join(ROOT, "ui", "server.py")
+    p = subprocess.Popen([sys.executable, script, "--bin", bindir,
                           "--workspace", ws, "--port", "0", "--max-upload", "4"],
-                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
     for _ in range(2):
         line = p.stdout.readline().decode("utf-8", errors="replace")
         if "listening:" in line:
@@ -90,10 +96,36 @@ def start_console(build, ws):
     raise SystemExit("console did not start")
 
 
+def test_T27_public_audit_config(build):
+    with tempfile.TemporaryDirectory(prefix="swpor_ui_config_") as root:
+        ui = os.path.join(root, "ui")
+        os.mkdir(ui)
+        script = shutil.copy(os.path.join(ROOT, "ui", "server.py"), ui)
+        env_file = os.path.join(root, ".env")
+        for file_value, process_value, expected in (
+            (None, None, False),
+            ("true", None, True),
+            ("true", "false", False),
+            ("false", "true", True),
+        ):
+            if file_value is not None:
+                with open(env_file, "w", encoding="utf-8") as f:
+                    f.write("# Web console\n")
+                    f.write(f'SWPOR_WEB_PUBLIC_AUDIT = "{file_value}" # classroom demo\n')
+            proc, port, token = start_console(build, os.path.join(root, "ws"), process_value, script)
+            try:
+                st, state = Client(port, token).get("/api/state")
+                check(st == 200 and state.get("public_audit") is expected,
+                      f"public audit config: file={file_value}, env={process_value}, expected={expected}")
+            finally:
+                stop_console(proc)
+
+
 def main():
     build = os.path.abspath(sys.argv[1])
+    test_T27_public_audit_config(build)
     ws = tempfile.mkdtemp(prefix="swpor_ui_")
-    proc, port, token = start_console(build, ws)
+    proc, port, token = start_console(build, ws, "false")
     c = Client(port, token)
     secrets_seen = []
     try:
@@ -129,7 +161,8 @@ def main():
         q = urllib.parse.quote(name)
         st, j = c.post(f"/api/upload?name={q}", data)
         check(st == 200 and j.get("path") == f"data/{name}", f"upload: {st} {j}")
-        st, _ = c.post(f"/api/upload?name={q}", data)
+        # 重复名称在读取请求体前就会被拒绝，只发送一个字节以避免发送与断开连接竞争。
+        st, _ = c.post(f"/api/upload?name={q}", b"x")
         check(st == 409, f"duplicate upload: HTTP {st}")
         for bad in ("../x.bin", "a/b", "..", ".hidden", "x\\y", ""):
             st, _ = c.post("/api/upload?name=" + urllib.parse.quote(bad), b"x")
@@ -236,11 +269,7 @@ def main():
                 check(tail not in b and tail.hex().encode() not in b,
                       "secret key material in API response")
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        stop_console(proc)
         shutil.rmtree(ws, ignore_errors=True)
 
     if FAILURES:
@@ -250,6 +279,16 @@ def main():
         return 1
     print("Web console tests (T-27): all checks passed")
     return 0
+
+
+def stop_console(proc):
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    proc.stdout.close()
 
 
 if __name__ == "__main__":
