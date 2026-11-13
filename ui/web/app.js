@@ -181,6 +181,11 @@ const S = {
   dataSig: "",
 };
 const F = {};          // 表单字段值，按字段 id 保存，重新渲染时恢复
+const REMOTE_PROFILE_KEY = "swpor-remote-profile";
+let savedRemote = {};
+try { savedRemote = JSON.parse(localStorage.getItem(REMOTE_PROFILE_KEY)) || {}; } catch (e) { /* 存储不可用 */ }
+let remotePending = false;
+let remoteError = "";
 
 const VIEWS = [
   ["overview", "概览"],
@@ -251,7 +256,7 @@ async function poll() {
   const revision = ++pollRevision;
   clearTimeout(pollTimer);
   await refreshJobs();
-  if (S.view === "server") await refreshState();
+  if (S.view === "server" || S.data?.remote?.profile) await refreshState();
   if (revision !== pollRevision) return;
   const running = S.jobs.some((j) => j.status === "running") || [...S.inlineJobs.values()].some(
     ({ id }) => id !== undefined && S.details.get(id)?.ended == null);
@@ -337,9 +342,15 @@ function tags() {
 }
 function tagByPath(p) { return tags().find((t) => t.path === p); }
 function tagByFid(fid) { return tags().find((t) => t.info && t.info.file_id === fid); }
-function serverAddr() {
-  const s = S.data && S.data.server;
-  return s && s.running ? s.address : "";
+function remoteLabel(profile) {
+  const host = profile.host.includes(":") ? `[${profile.host}]` : profile.host;
+  return `${host}:${profile.port}`;
+}
+
+function remoteAvailable(profile) {
+  const remote = S.data?.remote;
+  return remote?.connected && ["mode", "host", "port", "user", "ssh_port"].every(
+    (key) => remote.profile[key] === profile[key]);
 }
 
 /** 为某个标签选择默认密钥：存储时使用的密钥优先，否则选同方案的第一个 */
@@ -353,11 +364,13 @@ function defaultKeyFor(tag, kinds) {
 /** 标签对应的存储位置参数 */
 function targetFor(tag) {
   const m = tag.meta || {};
+  if (m.remote_profile) return { target: "remote", remote_profile: m.remote_profile };
   if (m.target === "remote") return { target: "remote", server: m.server };
   return { target: "local" };
 }
 function locationLabel(tag) {
   const m = tag.meta || {};
+  if (m.remote_profile) return "远程 " + remoteLabel(m.remote_profile);
   if (m.target === "remote") return "远程 " + m.server;
   return tag.local_stored ? "本地存储" : "本地（已删除）";
 }
@@ -573,14 +586,16 @@ function renderTopbar() {
   el.replaceChildren();
   if (!S.data) return;
   const srv = S.data.server;
+  const remote = S.data.remote;
   append(el, [
     h("span", { class: "badge" }, "v" + S.data.version),
     h("span", { class: "badge" }, { darwin: "macOS", linux: "Linux", win32: "Windows" }[S.data.platform] || S.data.platform),
-    srv.available
+    remote?.connected ? h("span", { class: "badge pass", title: remoteLabel(remote.profile) },
+      h("span", { class: "dot" }), "远程 pord 已连接") : srv.available
       ? (srv.running
-        ? h("span", { class: "badge pass" }, h("span", { class: "dot" }), "pord 运行中 " + srv.address)
-        : h("span", { class: "badge" }, "pord 未启动"))
-      : h("span", { class: "badge" }, "本平台无 pord"),
+        ? h("span", { class: "badge pass" }, h("span", { class: "dot" }), "本机 pord 运行中 " + srv.address)
+        : h("span", { class: "badge" }, "本机 pord 未启动"))
+      : h("span", { class: "badge" }, "本机无 pord"),
   ]);
 }
 
@@ -876,8 +891,8 @@ function viewOverview() {
           [`密钥 ${visibleKeys.length} 个`, `数据文件 ${d.data.length} 个`], "owner"),
         link(publicAudit ? "存储" : "存储 / 挑战", publicAudit ? "检索 / 删除" : "检索 / 证明", true),
         party("server", "存储服务端 pord", "存储编码后的文件和标签，响应挑战生成证明。",
-          [d.server.available ? (d.server.running ? `运行中 ${d.server.address}` : "未启动") : "本平台不可用",
-            `服务端文件 ${serverFileIds().length} 个`], "server"),
+          [d.server.available ? (d.server.running ? `本机运行中 ${d.server.address}` : "本机未启动") : "本机无 pord",
+            `本机服务端文件 ${serverFileIds().length} 个`], "server"),
         publicAudit ? [link("挑战", "证明", true),
           party("auditor", "第三方审计者 porta", "只持有公钥与文件标签，公开验证。",
             [`公钥 ${keyFiles(["pub_pk"]).length} 个`, `Pub 文件 ${visibleTags.filter((t) => t.info.scheme === "pub").length} 个`], "auditor")] : null)),
@@ -997,7 +1012,9 @@ function cardStore() {
     { value: "", label: "64:64（默认）" }, { value: "8:8", label: "8:8" }, { value: "16:16", label: "16:16" },
     { value: "32:32", label: "32:32" }, { value: "128:64", label: "128:64" }, { value: "none", label: "不使用" },
   ];
-  const remote = fval("st-target", "local") === "remote";
+  const connection = S.data.remote;
+  const target = fval("st-target", connection?.connected ? "remote" : "local");
+  const remote = target === "remote";
   const rerender = () => renderView();
   return h("div", { class: "card store-card" }, h("h2", {}, "预处理并存储"),
     h("p", { class: "hint" }, "将文件分块并生成审计标签，供后续审计和恢复。"),
@@ -1007,9 +1024,16 @@ function cardStore() {
       field("数据文件", selectInput("st-input", dataOpts, "")),
       field("存储位置", selectInput("st-target", [
         { value: "local", label: "本地存储", detail: "保存在工作区 store/ 目录" },
-        { value: "remote", label: "远程服务端", detail: "发送给指定地址的 pord 服务端" },
-      ], "local", rerender)),
-      remote ? field("服务端地址", textInput("st-server", serverAddr(), { placeholder: "host:port" }), "wide") : null),
+        { value: "local-pord", label: "本机 pord", detail: "使用此控制台启动的 pord" },
+        { value: "remote", label: "远程服务端", detail: "使用存储服务端页面建立的连接" },
+      ], target, rerender)),
+      remote ? h("div", { class: "actions wide" },
+        connection?.connected ? h("span", { class: "hint" }, remoteLabel(connection.profile))
+          : h("span", { class: "hint" }, "请先连接远程服务端。"),
+        h("button", { class: "btn small", onclick: () => go("server") }, "前往存储服务端")) : null,
+      target === "local-pord" && !S.data.server.running ? h("div", { class: "actions wide" },
+        h("span", { class: "hint" }, "请先启动本机 pord。"),
+        h("button", { class: "btn small", onclick: () => go("server") }, "前往存储服务端")) : null),
     h("div", { class: "form" },
       field("每块扇区数 s", numInput("st-s", "128", { min: 1, max: 65535 })),
       field("纠删码 (RS)", selectInput("st-rs", rsOpts, "")),
@@ -1019,12 +1043,14 @@ function cardStore() {
           checkInput("st-encrypt", "加密", false, isPub())))),
     isPub() ? h("p", { class: "hint" }, "Pub 方案不支持置乱与加密。") : null,
     h("div", { class: "actions" }, h("button", {
-      class: "btn primary", disabled: !keyOpts.length || !dataOpts.length,
+      class: "btn primary", disabled: !keyOpts.length || !dataOpts.length ||
+        (remote && !connection?.connected) || (target === "local-pord" && !S.data.server.running),
       onclick: () => {
         const s = intOf("st-s", "128");
         if (!(s >= 1 && s <= 65535)) { toast("s 应为 1～65535 的整数", true); return; }
         const body = { key: F["st-key"], input: F["st-input"], s, rs: F["st-rs"] || "", target: F["st-target"] };
-        if (body.target === "remote") body.server = (fval("st-server", serverAddr()) || "").trim();
+        if (body.target === "remote") body.remote_profile = S.data.remote?.profile;
+        if (body.target === "local-pord") Object.assign(body, { target: "remote", server: S.data.server.address });
         if (!isPub()) { body.perm = !!F["st-perm"]; body.encrypt = !!F["st-encrypt"]; }
         runJob("/api/store", body);
       },
@@ -1047,6 +1073,7 @@ function cardStored() {
       const key = defaultKeyFor(t, ["priv", "pub_sk", "pub_pk"]);
       const tgt = targetFor(t);
       const gone = tgt.target === "local" && !t.local_stored;
+      const needsConnection = tgt.remote_profile && !remoteAvailable(tgt.remote_profile);
       const slot = "owner:" + t.path;
       return h("tr", {},
         h("td", { title: i.file_id || "" }, h("div", {}, t.name), h("div", { class: "mono muted" }, shortId(i.file_id))),
@@ -1057,21 +1084,30 @@ function cardStored() {
         h("td", {}, locationLabel(t)),
         h("td", {}, h("div", { class: "row-actions" },
           h("button", {
-            class: "btn small primary", disabled: !key || gone,
+            class: "btn small primary", disabled: !key || gone || needsConnection,
             onclick: () => runJob("/api/audit", { key, tag: t.path, l: auditL(), seed_mode: !!F["ow-seed"], ...tgt }, slot + ":audit"),
           }, "审计"),
           h("button", {
-            class: "btn small", disabled: !key || gone,
+            class: "btn small", disabled: !key || gone || needsConnection,
             onclick: () => runJob("/api/retrieve", { key, tag: t.path, ...tgt }, slot + ":retrieve"),
           }, "恢复"),
           h("button", {
-            class: "btn small danger", disabled: gone,
+            class: "btn small danger", disabled: gone || needsConnection,
             onclick: () => { if (confirm(`删除服务端上 ${t.name} 对应的存储（porctl delete）？`)) runJob("/api/delete", { tag: t.path, ...tgt }, slot + ":delete"); },
           }, "删除存储"),
           h("button", {
             class: "btn small danger",
             onclick: () => removePath(t.path, `移除标签文件 ${t.path}？没有标签将无法再审计或恢复该文件。`),
-          }, "移除标签")),
+          }, "移除标签"),
+          needsConnection ? h("button", { class: "btn small", onclick: () => {
+            const p = tgt.remote_profile;
+            F["srv-remote-mode"] = p.mode;
+            F["srv-remote-host"] = p.host;
+            F["srv-remote-port"] = p.port;
+            F["srv-ssh-user"] = p.user || "";
+            F["srv-ssh-port"] = p.ssh_port || 22;
+            go("server");
+          } }, "连接此服务端") : null),
           inlineJob(slot + ":audit"), inlineJob(slot + ":retrieve"), inlineJob(slot + ":delete")));
     }))) : h("div", { class: "empty" }, "还没有存储文件");
   return h("div", { class: "card" }, h("h2", {}, "已存储的文件", h("span", { class: "sub" }, "porctl audit / retrieve / delete")),
@@ -1118,16 +1154,79 @@ function serverFileIds() {
   return ids.filter((id) => !publicIds.has(id));
 }
 
+function cardRemoteServer() {
+  const current = S.data.remote;
+  const config = current?.profile || savedRemote;
+  const mode = fval("srv-remote-mode", config.mode || "ssh");
+  const ssh = mode === "ssh";
+  const connected = current?.connected;
+  return h("div", { class: "card" }, h("h2", {}, "远程服务端",
+    h("span", { class: "badge" + (connected && !remotePending ? " pass" : ""), role: "status" },
+      remotePending ? "正在连接" : connected ? "已连接" : "未连接")),
+    h("p", { class: "hint", id: "srv-remote-help" },
+      ssh ? "用本机已配置的 SSH 密钥连接云服务器，自动转发到服务端的 pord。"
+        : "填写在内网或 VPN 中可直接访问的 pord 地址，也可使用现有的本机转发地址。"),
+    h("form", {
+      onsubmit: (e) => {
+        e.preventDefault();
+        const body = { mode, host: String(fval("srv-remote-host", config.host || "")).trim(),
+          port: fval("srv-remote-port", config.port || 7878) };
+        if (ssh) Object.assign(body, { user: String(fval("srv-ssh-user", config.user || "")).trim(),
+          ssh_port: fval("srv-ssh-port", config.ssh_port || 22) });
+        changeRemote("connect", body);
+      },
+    },
+    h("div", { class: "form" },
+      field("连接方式", selectInput("srv-remote-mode", [
+        { value: "ssh", label: "SSH 转发" }, { value: "direct", label: "直连" },
+      ], mode, () => { remoteError = ""; renderView(); })),
+      field("服务器 IP 或主机名", textInput("srv-remote-host", config.host || "", {
+        required: true, spellcheck: "false", autocapitalize: "off", disabled: remotePending,
+      })),
+      field("pord 端口", numInput("srv-remote-port", config.port || 7878, { required: true, min: 1, max: 65535, disabled: remotePending })),
+      ssh ? field("SSH 用户名", textInput("srv-ssh-user", config.user || "", {
+        required: true, spellcheck: "false", autocapitalize: "off", disabled: remotePending,
+      })) : null,
+      ssh ? field("SSH 端口", numInput("srv-ssh-port", config.ssh_port || 22, { required: true, min: 1, max: 65535, disabled: remotePending })) : null),
+    h("div", { class: "actions" },
+      h("button", { class: "btn primary", type: "submit", disabled: remotePending }, connected ? "重新连接" : "连接"),
+      current?.profile ? h("button", { class: "btn", type: "button", disabled: remotePending,
+        onclick: () => changeRemote("disconnect", {}) }, "断开") : null,
+      connected ? h("span", { class: "hint" }, remoteLabel(current.profile)) : null),
+    remoteError ? h("p", { class: "notice warn", role: "alert" }, remoteError) : null));
+}
+
+async function changeRemote(action, body) {
+  if (remotePending) return;
+  remotePending = true;
+  remoteError = "";
+  renderView();
+  try {
+    const remote = await api(`/api/server/${action}`, body);
+    if (remote.connected) {
+      savedRemote = remote.profile;
+      F["st-target"] = "remote";
+      try { localStorage.setItem(REMOTE_PROFILE_KEY, JSON.stringify(savedRemote)); } catch (e) { /* 当前会话仍可使用 */ }
+    }
+    await refreshState();
+  } catch (e) {
+    remoteError = e.message;
+  } finally {
+    remotePending = false;
+    renderView();
+  }
+}
+
 function viewServer() {
   const s = S.data.server;
   const fileIds = serverFileIds();
-  const head = pageHead("存储服务端", "pord 存储编码后的文件和标签，响应挑战并生成证明。控制台启动的 pord 只监听 127.0.0.1，数据目录为工作区 srv/。");
+  const head = pageHead("存储服务端", "连接远程 pord，或在本机启动 pord 并查看文件、轨迹和日志。");
+  const remote = cardRemoteServer();
   if (!s.available) {
-    return [head, h("div", { class: "notice warn" },
-      "本平台没有 pord：Windows 只做客户端。可以在“数据所有者”页面选择远程服务端并填写 Linux / macOS 上 pord 的地址。")];
+    return [head, remote, h("div", { class: "notice" }, "此平台可作为客户端连接远程 pord。")];
   }
   const up = s.running && s.started ? Math.round(Date.now() / 1000 - s.started) : 0;
-  const statusCard = h("div", { class: "card" }, h("h2", {}, "pord 进程",
+  const statusCard = h("div", { class: "card" }, h("h2", {}, "本机 pord",
     s.running ? h("span", { class: "badge pass" }, h("span", { class: "dot" }), "运行中") : h("span", { class: "badge" }, "未启动")),
   s.running ? kv([["监听地址", h("span", { class: "mono" }, s.address)], ["进程号", s.pid], ["线程数", s.threads],
     ["运行时间", `${Math.floor(up / 60)} 分 ${up % 60} 秒`], ["命令", h("span", { class: "mono" }, (s.command || []).join(" "))]])
@@ -1146,21 +1245,21 @@ function viewServer() {
         serverCall("/api/server/start", { port, threads });
       },
     }, "启动 pord")));
-  const files = h("div", { class: "card" }, h("h2", {}, "服务端存储的文件", h("span", { class: "sub" }, "srv/")),
+  const files = h("div", { class: "card" }, h("h2", {}, "本机 pord 的文件", h("span", { class: "sub" }, "srv/")),
     fileIds.length ? h("table", { class: "tbl" }, fileIds.map((fid) => {
       const t = tagByFid(fid);
       return h("tr", {}, h("td", { class: "mono" }, shortId(fid)), h("td", {}, t ? t.name : h("span", { class: "muted" }, "（无本地标签）")));
     })) : h("div", { class: "empty" }, "没有文件"));
-  const evs = h("div", { class: "card" }, h("h2", {}, "服务端执行轨迹", h("span", { class: "sub" }, "logs/pord.trace.ndjson 最近 40 条")),
+  const evs = h("div", { class: "card" }, h("h2", {}, "本机 pord 的执行轨迹", h("span", { class: "sub" }, "logs/pord.trace.ndjson 最近 40 条")),
     s.events.length ? h("div", { class: "table-wrap" }, h("table", { class: "tbl" },
       h("tr", {}, h("th", {}, "事件"), h("th", {}, "内容")),
       s.events.slice().reverse().map((e) => {
         const { type, ...rest } = e;
         return h("tr", {}, h("td", {}, h("span", { class: "badge" }, type)), h("td", { class: "mono muted" }, JSON.stringify(rest)));
       }))) : h("div", { class: "empty" }, "暂无事件"));
-  const log = h("div", { class: "card" }, h("h2", {}, "服务端日志", h("span", { class: "sub" }, "logs/pord.log")),
+  const log = h("div", { class: "card" }, h("h2", {}, "本机 pord 的日志", h("span", { class: "sub" }, "logs/pord.log")),
     s.log.length ? h("pre", { class: "log" }, s.log.join("\n")) : h("div", { class: "empty" }, "暂无日志"));
-  return [head, h("div", { class: "grid grid-2" }, statusCard, files), evs, log];
+  return [head, h("div", { class: "grid grid-2" }, remote, statusCard), files, evs, log];
 }
 
 async function serverCall(path, body) {
@@ -1200,7 +1299,8 @@ function viewAuditor() {
       h("td", {}, locationLabel(t))))) : h("div", { class: "empty" }, "没有 Pub 方案的文件"),
     h("div", { class: "actions" },
       h("button", {
-        class: "btn primary", disabled: !pkOpts.length || !chosen.length || locs.size !== 1 || !!running,
+        class: "btn primary", disabled: !pkOpts.length || !chosen.length || locs.size !== 1 || !!running ||
+          chosen.some((t) => t.meta?.remote_profile && !remoteAvailable(t.meta.remote_profile)),
         onclick: () => {
           const l = intOf("ta-l", "128"), count = intOf("ta-count", "1"), interval = intOf("ta-interval", "5");
           if (!(l >= 1) || !(count >= 0) || !(interval >= 0)) { toast("参数应为非负整数", true); return; }
