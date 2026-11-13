@@ -38,20 +38,23 @@ static EVP_MAC_CTX *hmac_ctx_new(const uint8_t *key, size_t key_len, const char 
     return ctx;
 }
 
-/* 用已设置的密钥计算 HMAC(dst ‖ I2OSP(i, 8))。EVP_MAC_init 传 NULL 密钥表示沿用原密钥。 */
-static int hmac_counter(EVP_MAC_CTX *ctx, const char *dst, size_t dst_len, uint64_t i,
+/* 用已设置的密钥计算 HMAC(dst ‖ I2OSP(i, 8))。每次从已初始化的状态复制，
+ * 避免 OpenSSL 3.0.2 在 EVP_MAC_final 后用 NULL 密钥重新初始化时产生不同结果。 */
+static int hmac_counter(const EVP_MAC_CTX *keyed_ctx, const char *dst, size_t dst_len, uint64_t i,
                         uint8_t *out, size_t out_cap)
 {
+    EVP_MAC_CTX *ctx = EVP_MAC_CTX_dup(keyed_ctx);
+    if (ctx == NULL) {
+        return SWPOR_E_CRYPTO;
+    }
     uint8_t ctr[8];
     swpor_store_be64(ctr, i);
     size_t outl = 0;
-    if (EVP_MAC_init(ctx, NULL, 0, NULL) != 1 ||
-        EVP_MAC_update(ctx, (const unsigned char *)dst, dst_len) != 1 ||
-        EVP_MAC_update(ctx, ctr, sizeof(ctr)) != 1 ||
-        EVP_MAC_final(ctx, out, &outl, out_cap) != 1 || outl != out_cap) {
-        return SWPOR_E_CRYPTO;
-    }
-    return SWPOR_OK;
+    int ok = EVP_MAC_update(ctx, (const unsigned char *)dst, dst_len) == 1 &&
+             EVP_MAC_update(ctx, ctr, sizeof(ctr)) == 1 &&
+             EVP_MAC_final(ctx, out, &outl, out_cap) == 1 && outl == out_cap;
+    EVP_MAC_CTX_free(ctx);
+    return ok ? SWPOR_OK : SWPOR_E_CRYPTO;
 }
 
 /* ===================================================================== */
