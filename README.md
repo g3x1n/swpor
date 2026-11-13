@@ -42,7 +42,7 @@ ctest --preset windows-debug
 
 | 预设 | 用途 |
 |---|---|
-| `debug` / `release` | 使用系统依赖（Homebrew / apt），Linux / macOS 的主路径，与 CI 一致 |
+| `debug` / `release` | 使用系统依赖（Homebrew / apt），Linux / macOS 的主路径；演示阶段 CI 在 macOS 上使用 `debug` |
 | `vcpkg-debug` / `vcpkg-release` | 使用 vcpkg 依赖（需设置 `VCPKG_ROOT`）；Linux / macOS 上可选，arm64 macOS 需另用 Homebrew 安装 isa-l |
 | `windows-debug` / `windows-release` | Windows + MSVC + vcpkg |
 

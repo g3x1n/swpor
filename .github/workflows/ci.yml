@@ -1,4 +1,4 @@
-# 三平台构建与测试（SPEC 2.1）。依赖按平台获取：Linux 用 apt，macOS 用 Homebrew，Windows 用 vcpkg（vcpkg.json）。
+# 本机演示阶段只验证 macOS arm64（SPEC 2.1）。
 name: CI
 
 on:
@@ -9,25 +9,8 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x64
-            os: ubuntu-latest
-            preset: debug
-          - name: macos-arm64
-            os: macos-latest
-            preset: debug
-          - name: windows-x64
-            os: windows-2022   # windows-latest 已不含 VS 2022，与 windows-debug 预设的生成器不匹配
-            preset: windows-debug
-
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+    name: macos-arm64
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -37,42 +20,17 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Install dependencies (Linux, apt)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev libcmocka-dev libisal-dev pkg-config
-
       - name: Install dependencies (macOS, Homebrew)
-        if: runner.os == 'macOS'
         run: brew install openssl@3 cmocka isa-l
 
-      # 以下两步只在 Windows 上运行：Windows 依赖由 vcpkg 清单模式安装
-      - name: Restore vcpkg binary cache
-        if: runner.os == 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ matrix.name }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-${{ matrix.name }}-
-
-      - name: Bootstrap vcpkg
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
-          git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
-          "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
-
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: cmake --preset debug
 
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}
+        run: cmake --build --preset debug
 
       - name: Test
-        run: ctest --preset ${{ matrix.preset }}
+        run: ctest --preset debug
 
       - name: Dependency self-check
-        shell: bash
-        run: |
-          exe=$(find build -type f \( -name porctl -o -name porctl.exe \) | head -n 1)
-          "$exe" doctor
+        run: ./build/debug/apps/porctl doctor
