@@ -8,23 +8,36 @@
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
-<body>
+<body class="jobs-closed">
   <!-- swpor 本机 Web 控制台前端（SPEC 9.5）：页面内容全部由 app.js 生成 -->
   <header class="topbar">
     <div class="brand">
+      <button class="btn small nav-toggle" id="nav-toggle" type="button" aria-controls="nav" aria-expanded="true" aria-label="收起导航" title="收起导航">☰</button>
       <img src="icon.svg" alt="" class="brand-mark">
       <div>
         <div class="brand-name">swpor 审计控制台</div>
         <div class="brand-sub">Shacham–Waters 紧凑可恢复性证明 · 三方数据审计</div>
       </div>
     </div>
-    <div class="topbar-status" id="topbar-status"></div>
+    <div class="topbar-right">
+      <div class="topbar-status" id="topbar-status"></div>
+      <button class="btn small jobs-toggle" id="jobs-toggle" type="button" aria-controls="jobs" aria-expanded="false">任务与轨迹</button>
+    </div>
   </header>
   <div class="layout">
-    <nav class="sidebar" id="nav"></nav>
+    <nav class="sidebar" id="nav" aria-label="主导航"></nav>
     <main class="main" id="main"></main>
-    <aside class="jobs" id="jobs"></aside>
+    <aside class="jobs" id="jobs" aria-labelledby="jobs-title" inert>
+      <div class="jobs-head">
+        <h2 id="jobs-title">任务与执行轨迹</h2>
+        <div id="jobs-running"></div>
+        <button class="btn small jobs-close" id="jobs-close" type="button">收起</button>
+      </div>
+      <div class="job-list" id="job-list"></div>
+      <div class="job-detail" id="job-detail"></div>
+    </aside>
   </div>
+  <div class="scrim" id="scrim" aria-hidden="true"></div>
   <div class="toast-host" id="toasts"></div>
 </body>
 </html>
