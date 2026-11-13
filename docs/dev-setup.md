@@ -6,7 +6,7 @@
 
 ## 1. 依赖管理
 
-依赖按平台分别获取（SPEC 2.1），CI 与本地开发使用同一条路径：
+依赖按平台分别获取（SPEC 2.1）。演示阶段的 CI 与本地 Mac 使用同一条路径：
 
 | 平台 | 安装依赖 | 预设 |
 |---|---|---|
@@ -77,7 +77,7 @@ CMake 选项：
 ### Windows（Tier 2，仅客户端）
 
 - 编译器：MSVC 2022，警告选项 `/W4 /WX`，Debug 开启 `/fsanitize=address`。
-- 主要依赖 CI（`windows-latest`）验证。需要本地调试时，可在 Mac 上用 UTM / Parallels 运行 Windows 11 ARM 虚拟机。
+- 演示阶段暂不运行 Windows CI。后续恢复验证时，用带 Visual Studio 2022 的 Windows x64 环境运行 `windows-debug` 预设。
 - 路径在内部统一使用 UTF-8，调用系统 API 前转为 UTF-16 并使用 `*W` 版本函数（只在 `src/platform/` 中处理）。
 - 常见移植问题：MSVC 不支持 VLA；没有 `ssize_t`；`-W...` 选项只对 GCC/Clang 有效，CMake 中需按编译器分别设置。
 
@@ -87,15 +87,15 @@ CMake 选项：
 |---|---|
 | 本地 Mac | 日常编码、编译、单元测试、本地模式端到端测试、UI 开发 |
 | Linux 服务器 | 长时间运行 `pord`、跨机器网络测试（Mac 客户端 → Linux 服务端）、valgrind、正式基准测试 |
-| GitHub Actions | 三平台构建与测试；打 tag 后自动构建发布包 |
+| GitHub Actions | 演示阶段运行 macOS arm64 的构建、测试和依赖自检 |
 
 代码同步只通过 git：本地提交并推送，服务器上 `git pull` 后构建。不要在服务器上直接改代码，也不要用 scp 拷贝源码。
 
 ## 5. 分支与发布
 
 - `main` 始终可构建、测试全部通过。
-- 每个功能在独立分支开发（如 `feat/priv-tag`），完成后开 Pull Request，CI 三平台全部通过后合并。
-- 完成里程碑后打 tag（如 `v0.1.0` 对应 M1），CI 自动构建三平台发布包并上传 GitHub Releases。
+- 每个功能在独立分支开发（如 `feat/priv-tag`），完成后开 Pull Request。演示阶段，macOS arm64 的 CI 检查通过后即可合并。
+- 完成里程碑后打 tag（如 `v0.1.0` 对应 M1）。三平台发布前恢复 Linux 和 Windows 的验证，并构建各平台的 Release 包。
 - 版本号遵循 SemVer：文件格式或协议的不兼容变更必须提升主版本号（1.0 之前提升次版本号）。
 - `CHANGELOG.md` 记录每个版本的用户可见变更。
 

@@ -1,6 +1,6 @@
 # SPEC.md — swpor：基于 Shacham–Waters 紧凑可恢复性证明的数据审计系统
 
-> 版本：v0.9（草案） · 状态：待评审
+> 版本：v0.10（草案） · 状态：待评审
 > 依据论文：H. Shacham, B. Waters. *Compact Proofs of Retrievability*. Asiacrypt 2008（本仓库所附 PDF 为完整版）。
 > 本文件是实现的**唯一事实来源**。代码与本文件不一致时，以本文件为准；需要偏离时，先改本文件（并在第 14 节"变更记录"登记），再改代码。
 
@@ -100,7 +100,7 @@
 
 | 级别 | 平台 | 要求 |
 |---|---|---|
-| Tier 1 | macOS arm64（主要开发平台）、Linux x86_64（部署与基准测试平台） | 全部组件可构建，全部测试通过，每次提交都由 CI 检查 |
+| Tier 1 | macOS arm64（主要开发平台）、Linux x86_64（部署与基准测试平台） | 全部组件可构建，全部测试通过。演示阶段日常 CI 验证 macOS，Linux 在后续跨平台适配时验证 |
 | Tier 2 | Windows x64（MSVC 2022） | 只做客户端：`libswpor`、`porctl`、`porta`、`porbench`（以及 M-UI）可构建，并通过单元测试、本地模式端到端测试，以及连接 Linux/macOS 上 `pord` 的远程测试。**`pord` 不在 Windows 上构建与发布**（CMake 选项 `SWPOR_BUILD_SERVER` 在 Windows 上默认关闭） |
 | 尽力而为 | Linux arm64、macOS x86_64、Windows arm64 | 不进 CI，有问题再修 |
 
@@ -118,8 +118,8 @@
 - 不得使用 `epoll`、`kqueue`、`getrandom`、`fork`、`mmap` 等只在部分平台存在的接口；不使用 C11 `<threads.h>`（macOS 不支持）。网络并发模型因此选用线程池（见 8.4）。
 - 文件格式与网络协议在三个平台上逐字节一致；跨平台互通是测试项（T-25）。
 - 论文用的性能数据以 Linux 上的 Release 构建为准，并注明 CPU 型号；其他平台的数据只作参考。
-- CI：GitHub Actions 在 `ubuntu-latest`、`macos-latest`、`windows-2022` 三个平台上构建与测试。Windows 固定为 `windows-2022`，因为 `windows-latest` 镜像已不含 Visual Studio 2022，与 `windows-*` 预设使用的 "Visual Studio 17 2022" 生成器不匹配。
-- 发布：打 git tag（如 `v0.3.0`）后，CI 自动为三个平台构建 Release 版本，打包上传到 GitHub Releases（CPack 生成 `.tar.gz` / `.zip`）。
+- CI：本机演示阶段，GitHub Actions 在 Pull Request、推送到 `main` 或推送 `v*` 标签时，仅用 `macos-latest`（arm64）运行 Debug 构建、测试和依赖自检。Linux x86_64 与 Windows x64 的 CI 检查推迟到跨平台适配阶段。
+- 跨平台发布目标：恢复三平台验证后，通过 git tag 触发三个平台的 Release 构建，用 CPack 生成 `.tar.gz` / `.zip` 并上传到 GitHub Releases。
 
 ---
 
@@ -607,3 +607,4 @@ porbench detect [--n 10000] [--s 1] [--l 128] [--ratios 0.001,0.005,0.01,0.05,0.
 | 2026-11-11 | v0.7 | 2.1：CI 的 Windows 运行器固定为 `windows-2022`（`windows-latest` 不含 VS 2022） | |
 | 2026-11-11 | v0.8 | 2.1：依赖按平台获取——Linux 用 apt、macOS 用 Homebrew、Windows 用 vcpkg（vcpkg 的 isal 端口不支持 arm64 macOS） | |
 | 2026-11-11 | v0.9 | M-UI 改为本机 Web 控制台：重写 9.5（Python 标准库后端 + 原生 JS 前端，以子进程调用 CLI，去掉教学模式与实况回放），更新 1.3 验收标准，新增 T-27；OPEN-6 延期 | |
+| 2026-11-13 | v0.10 | 2.1：本机演示阶段仅在 CI 中验证 macOS arm64，Linux x86_64 与 Windows x64 检查推迟到跨平台适配阶段 | |
