@@ -279,17 +279,26 @@ function numInput(id, def, attrs) {
     oninput: (e) => { F[id] = e.target.value; },
   }, attrs || {}));
 }
-/** options: [{value, label}]；当前值不在选项中时取第一个 */
+/** options: [{value, label, detail?}]；当前值不在选项中时取第一个 */
 function selectInput(id, options, def, onchange) {
   let cur = fval(id, def);
   if (!options.some((o) => o.value === cur)) cur = options.length ? options[0].value : "";
   F[id] = cur;
+  const selectedText = (value) => {
+    const option = options.find((o) => o.value === value);
+    return option?.detail || option?.label || "";
+  };
   const sel = h("select", {
-    id, disabled: options.length === 0,
-    onchange: (e) => { F[id] = e.target.value; if (onchange) onchange(e.target.value); },
+    id, title: selectedText(cur), disabled: options.length === 0,
+    onchange: (e) => {
+      const { value } = e.target;
+      F[id] = value;
+      e.target.title = selectedText(value);
+      if (onchange) onchange(value);
+    },
   }, options.length ? options.map((o) => h("option", { value: o.value, selected: o.value === cur }, o.label))
     : h("option", { value: "" }, "（无）"));
-  return sel;
+  return h("span", { class: "select-control" }, sel);
 }
 function checkInput(id, label, def, disabled, onchange) {
   const on = !disabled && !!fval(id, def);
@@ -975,24 +984,35 @@ function cardUpload() {
 }
 
 function cardStore() {
-  const keyOpts = keyOptions(["priv", "pub_sk"]);
-  const dataOpts = S.data.data.map((f) => ({ value: f.path, label: `${f.name}（${fmtBytes(f.size)}）` }));
+  const keyOpts = keyFiles(["priv", "pub_sk"]).map((f) => ({
+    value: f.path,
+    label: publicAuditVisible() ? `${f.key} · ${f.scheme === "pub" ? "Pub" : "Priv"}` : f.key,
+    detail: f.path,
+  }));
+  const dataOpts = S.data.data.map((f) => ({
+    value: f.path, label: f.name, detail: `${f.name}（${fmtBytes(f.size)}）`,
+  }));
   const isPub = () => (F["st-key"] || "").endsWith("/pub.sk");
   const rsOpts = [
-    { value: "", label: "默认 64:64" }, { value: "8:8", label: "8:8" }, { value: "16:16", label: "16:16" },
-    { value: "32:32", label: "32:32" }, { value: "128:64", label: "128:64" }, { value: "none", label: "不使用纠删码" },
+    { value: "", label: "64:64（默认）" }, { value: "8:8", label: "8:8" }, { value: "16:16", label: "16:16" },
+    { value: "32:32", label: "32:32" }, { value: "128:64", label: "128:64" }, { value: "none", label: "不使用" },
   ];
   const remote = fval("st-target", "local") === "remote";
   const rerender = () => renderView();
-  return h("div", { class: "card" }, h("h2", {}, "预处理并存储", h("span", { class: "sub" }, "porctl store：纠删码 → 置乱 / 加密 → 分块 → 打标签")),
+  return h("div", { class: "card store-card" }, h("h2", {}, "预处理并存储"),
+    h("p", { class: "hint" }, "将文件分块并生成审计标签，供后续审计和恢复。"),
     keyOpts.length && dataOpts.length ? null : h("div", { class: "notice" }, "需要先生成密钥，并上传数据文件。"),
-    h("div", { class: "form" },
+    h("div", { class: "form store-source" },
       field("密钥", selectInput("st-key", keyOpts, "", rerender)),
       field("数据文件", selectInput("st-input", dataOpts, "")),
+      field("存储位置", selectInput("st-target", [
+        { value: "local", label: "本地存储", detail: "保存在工作区 store/ 目录" },
+        { value: "remote", label: "远程服务端", detail: "发送给指定地址的 pord 服务端" },
+      ], "local", rerender)),
+      remote ? field("服务端地址", textInput("st-server", serverAddr(), { placeholder: "host:port" }), "wide") : null),
+    h("div", { class: "form" },
       field("每块扇区数 s", numInput("st-s", "128", { min: 1, max: 65535 })),
-      field("RS 编码 k:m", selectInput("st-rs", rsOpts, "")),
-      field("存储位置", selectInput("st-target", [{ value: "local", label: "本地存储（工作区 store/）" }, { value: "remote", label: "远程服务端 pord" }], "local", rerender)),
-      remote ? field("服务端地址", textInput("st-server", serverAddr(), { placeholder: "host:port" })) : null,
+      field("纠删码 (RS)", selectInput("st-rs", rsOpts, "")),
       h("div", { class: "field" }, h("span", {}, "选项"),
         h("div", { class: "actions" },
           checkInput("st-perm", "秘密置乱", false, isPub()),
@@ -1056,8 +1076,9 @@ function cardStored() {
     }))) : h("div", { class: "empty" }, "还没有存储文件");
   return h("div", { class: "card" }, h("h2", {}, "已存储的文件", h("span", { class: "sub" }, "porctl audit / retrieve / delete")),
     h("div", { class: "form" },
-      field("挑战块数 l", numInput("ow-l", "128", { min: 1 })),
-      h("div", { class: "field" }, h("span", {}, "挑战方式"), checkInput("ow-seed", "种子挑战（--seed-mode）", false))),
+      field("挑战块数", numInput("ow-l", "128", { min: 1 })),
+      h("div", { class: "field", title: "用随机种子生成挑战，减少远程审计时发送的数据" },
+        h("span", {}, "挑战方式"), checkInput("ow-seed", "种子挑战", false))),
     h("p", { class: "hint" }, publicAuditVisible() ?
       "审计和恢复默认使用存储时的密钥；Pub 文件也可以交给第三方审计者用公钥审计。" :
       "审计和恢复默认使用存储时的密钥。"),
@@ -1165,7 +1186,7 @@ function viewAuditor() {
     pkOpts.length ? null : h("div", { class: "notice" }, "需要先在“数据所有者”页面生成 Pub 密钥并存储文件。"),
     h("div", { class: "form" },
       field("公钥", selectInput("ta-pk", pkOpts, "")),
-      field("挑战块数 l", numInput("ta-l", "128", { min: 1 })),
+      field("挑战块数", numInput("ta-l", "128", { min: 1 })),
       field("轮数（0 = 一直运行）", numInput("ta-count", "1", { min: 0 })),
       field("间隔（秒）", numInput("ta-interval", "5", { min: 0 })),
       h("div", { class: "field" }, h("span", {}, "挑战方式"), checkInput("ta-explicit", "显式挑战（--explicit）", false))),
@@ -1232,7 +1253,7 @@ function viewTamper() {
         class: "btn primary", disabled: !tag || !defaultKeyFor(tag, ["priv", "pub_sk", "pub_pk"]),
         onclick: () => runJob("/api/audit", { key: defaultKeyFor(tag, ["priv", "pub_sk", "pub_pk"]), tag: tag.path, l: intOf("tp-l", "128") || 128, target: "local" }, slot + ":audit"),
       }, "立即审计"),
-      h("label", { class: "inline-field" }, "挑战块数 l", numInput("tp-l", "128", { min: 1 })),
+      h("label", { class: "inline-field" }, "挑战块数", numInput("tp-l", "128", { min: 1 })),
       h("button", {
         class: "btn", disabled: !tag || !defaultKeyFor(tag, ["priv", "pub_sk", "pub_pk"]),
         onclick: () => runJob("/api/retrieve", { key: defaultKeyFor(tag, ["priv", "pub_sk", "pub_pk"]), tag: tag.path, target: "local" }, slot + ":retrieve"),

@@ -247,8 +247,16 @@ body.jobs-closed .jobs { display: none; }
 
 .form { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 16px; }
 .form .wide { grid-column: 1 / -1; }
+.store-card { container-type: inline-size; }
+.store-source { grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 400px) {
+  .store-source { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+}
+@container (min-width: 620px) {
+  .store-source { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr); }
+}
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.field > span { font-size: 12px; color: var(--text-2); }
+.field > span:first-child { font-size: 12px; color: var(--text-2); }
 .field input[type=text], .field input[type=number], .field select, .inline-field input {
   width: 100%;
   border: 1px solid var(--border-strong);
@@ -257,6 +265,27 @@ body.jobs-closed .jobs { display: none; }
   padding: 6px 9px;
   min-height: 34px;
 }
+.select-control { position: relative; display: block; min-width: 0; }
+.field .select-control select {
+  display: block;
+  appearance: none;
+  padding-inline-end: 34px;
+  text-overflow: ellipsis;
+}
+.select-control::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: 13px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  color: var(--text-2);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+.select-control:has(select:disabled)::after { opacity: .55; }
 .field input:focus, .field select:focus, .inline-field input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .field input:disabled, .field select:disabled { opacity: .55; }
 .check { display: flex; align-items: center; gap: 7px; font-size: 13px; min-height: 34px; cursor: pointer; }
